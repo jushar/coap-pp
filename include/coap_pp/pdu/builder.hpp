@@ -1,0 +1,76 @@
+#pragma once
+
+#include <algorithm>
+#include <cstddef>
+#include <span>
+#include <string_view>
+
+#include "coap_pp/pdu/serialize.hpp"
+#include "coap_pp/util/static_vector.hpp"
+
+namespace coap_pp {
+
+// Fluent builder for outgoing CoAP messages with a fixed-size option array.
+// MaxOptions controls the maximum number of options that can be added.
+// Silently saturates when MaxOptions is exceeded (embedded invariant).
+//
+// The OutgoingMessage returned by Build() borrows from this builder's internal
+// storage; the builder must outlive any use of the built message.
+template <std::size_t MaxOptions>
+class MessageBuilder {
+ public:
+  MessageBuilder& SetType(MessageType t) noexcept       { type_       = t;   return *this; }
+  MessageBuilder& SetCode(Code c) noexcept              { code_       = c;   return *this; }
+  MessageBuilder& SetMessageId(uint16_t mid) noexcept   { message_id_ = mid; return *this; }
+  MessageBuilder& SetToken(const Token& tk) noexcept    { token_      = tk;  return *this; }
+
+  MessageBuilder& AddOption(uint16_t number, std::monostate) noexcept {
+    return Push(OptionView{number, std::monostate{}});
+  }
+  MessageBuilder& AddOption(uint16_t number, uint32_t value) noexcept {
+    return Push(OptionView{number, value});
+  }
+  MessageBuilder& AddOption(uint16_t number, std::string_view value) noexcept {
+    return Push(OptionView{number, value});
+  }
+  MessageBuilder& AddOption(uint16_t number,
+                             std::span<const std::byte> value) noexcept {
+    return Push(OptionView{number, value});
+  }
+
+  MessageBuilder& SetPayload(std::span<const std::byte> data) noexcept {
+    payload_ = data;
+    return *this;
+  }
+
+  // Sorts options ascending by number and returns a view into internal storage.
+  [[nodiscard]] OutgoingMessage Build() noexcept {
+    std::sort(options_.begin(), options_.end(),
+              [](const OptionView& a, const OptionView& b) noexcept {
+                return a.number < b.number;
+              });
+    return OutgoingMessage{
+        type_,
+        code_,
+        message_id_,
+        token_,
+        std::span<const OptionView>{options_.data(), options_.size()},
+        payload_,
+    };
+  }
+
+ private:
+  MessageBuilder& Push(OptionView ov) noexcept {
+    options_.push_back(ov);
+    return *this;
+  }
+
+  MessageType type_{MessageType::kCon};
+  Code        code_{};
+  uint16_t    message_id_{0};
+  Token       token_{};
+  StaticVector<OptionView, MaxOptions> options_{};
+  std::span<const std::byte> payload_{};
+};
+
+}  // namespace coap_pp
