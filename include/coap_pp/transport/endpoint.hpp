@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace coap_pp {
 
@@ -18,6 +19,24 @@ struct Endpoint {
   std::array<std::byte, kStorageSize> storage{};
 
   bool operator==(const Endpoint&) const = default;
+
+  template <typename T>
+  static Endpoint From(const T& addr) {
+    static_assert(sizeof(T) <= kStorageSize,
+                  "Address does not fit into endpoint");
+
+    Endpoint ep{};
+    std::memcpy(ep.storage.data(), &addr, sizeof(addr));
+    return ep;
+  }
+
+  template <typename T>
+  const T& To() const {
+    static_assert(sizeof(T) <= kStorageSize,
+                  "To type is larger than the Endpoint storage");
+
+    return *reinterpret_cast<const T*>(storage.data());
+  }
 };
 
 }  // namespace coap_pp
