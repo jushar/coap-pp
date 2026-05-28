@@ -9,6 +9,7 @@
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/transport/endpoint.hpp"
 #include "coap_pp/transport/transport_if.hpp"
+#include "coap_pp/util/net_buffer.hpp"
 
 namespace coap_pp {
 
@@ -36,7 +37,7 @@ class MessageHandlerIF {
 // Ties a TransportIF to CoAP deserialize/dispatch and RFC 7252 §4.2 CON retransmission.
 //
 // Usage:
-//   std::array<Messenger::PendingSlot, 4> pool;
+//   NetBuffer<Messenger::PendingSlot, 4> pool;
 //   Messenger messenger{transport, pool};
 //   messenger.SetHandler(myHandler);
 //   // In application tick (e.g., every 100 ms):
@@ -50,7 +51,6 @@ class Messenger : public TransportReceiverIF {
     uint32_t elapsed_ms{0};
     uint32_t timeout_ms{0};
     uint8_t  retransmit_count{0};
-    bool     active{false};
 
     // Advance the timer by delta_ms and return what action to take.
     Action Advance(uint32_t delta_ms) noexcept;
@@ -67,16 +67,18 @@ class Messenger : public TransportReceiverIF {
     RetransmitState retry{};
   };
 
+  // pool is a NetBufferIF<PendingSlot> — typically a NetBuffer<PendingSlot, N> that
+  // implicitly converts. The Messenger holds a reference; the pool must outlive it.
   // Registers *this as the transport's receiver immediately.
-  Messenger(TransportIF&           transport,
-            std::span<PendingSlot> pending_pool) noexcept;
+  Messenger(TransportIF&              transport,
+            NetBufferIF<PendingSlot>& pool) noexcept;
 
   void SetHandler(MessageHandlerIF& handler) noexcept;
 
   // Serialize msg and send via transport.
-  // For CON messages a free PendingSlot is reserved for retransmission tracking.
+  // For CON messages a slot is claimed from the pending FIFO for retransmission tracking.
   // Returns MessengerError::kNoPendingSlot if the pool is full.
-  [[nodiscard]] MessengerError Send(const Endpoint&       destination,
+  [[nodiscard]] MessengerError Send(const Endpoint&        destination,
                                     const OutgoingMessage& msg) noexcept;
 
   // Drive CON retransmission timers. Call periodically from application tick.
@@ -90,9 +92,9 @@ class Messenger : public TransportReceiverIF {
  private:
   void AckPending(uint16_t message_id) noexcept;
 
-  TransportIF&         transport_;
-  MessageHandlerIF*    handler_{nullptr};
-  std::span<PendingSlot> pending_;
+  TransportIF&                           transport_;
+  MessageHandlerIF*                      handler_{nullptr};
+  NetBufferIF<PendingSlot>&              pending_;
   std::array<std::byte, kMaxMessageSize> tx_scratch_{};
 };
 

@@ -19,7 +19,7 @@ int main() {
   PosixUdpTransport transport{5683};
 
   // ── Messenger ────────────────────────────────────────────────────────────────
-  std::array<Messenger::PendingSlot, 4> con_pool{};
+  NetBuffer<Messenger::PendingSlot, 4> con_pool{};
   Messenger messenger{transport, con_pool};
 
   // ── Server ───────────────────────────────────────────────────────────────────

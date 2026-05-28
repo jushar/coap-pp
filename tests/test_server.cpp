@@ -67,7 +67,7 @@ class MockTransport : public TransportIF {
 class ServerTest : public ::testing::Test {
  protected:
   MockTransport transport_;
-  std::array<Messenger::PendingSlot, 4> pool_{};
+  NetBuffer<Messenger::PendingSlot, 4> pool_{};
   Messenger messenger_{transport_, pool_};
 
   std::array<ResourceEntry, 8> routes_{};

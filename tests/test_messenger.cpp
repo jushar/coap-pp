@@ -3,6 +3,7 @@
 #include "coap_pp/messaging/messenger.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/pdu/serialize.hpp"
+#include "coap_pp/util/net_buffer.hpp"
 #include "coap_pp/util/static_vector.hpp"
 
 namespace coap_pp {
@@ -82,7 +83,7 @@ class MockHandler : public MessageHandlerIF {
 class MessengerTest : public ::testing::Test {
  protected:
   MockTransport transport_;
-  std::array<Messenger::PendingSlot, 4> pool_{};
+  NetBuffer<Messenger::PendingSlot, 4> pool_{};
   Messenger messenger_{transport_, pool_};
   MockHandler handler_;
 
@@ -123,9 +124,7 @@ TEST_F(MessengerTest, SendNON_TransmittedImmediately) {
 
   EXPECT_EQ(transport_.sends_.size(), 1u);
   // NON should not occupy a pending slot.
-  for (const auto& slot : pool_) {
-    EXPECT_FALSE(slot.retry.active);
-  }
+  EXPECT_EQ(pool_.size(), 0u);
 }
 
 TEST_F(MessengerTest, SendCON_OccupiesPendingSlot) {
@@ -134,12 +133,7 @@ TEST_F(MessengerTest, SendCON_OccupiesPendingSlot) {
   ASSERT_EQ(messenger_.Send(Endpoint{}, b.Build()), MessengerError::kOk);
 
   EXPECT_EQ(transport_.sends_.size(), 1u);
-
-  int active_count = 0;
-  for (const auto& slot : pool_) {
-    if (slot.retry.active) { ++active_count; EXPECT_EQ(slot.message_id, 0x0042u); }
-  }
-  EXPECT_EQ(active_count, 1);
+  EXPECT_EQ(pool_.size(), 1u);
 }
 
 TEST_F(MessengerTest, SendCON_NoPendingSlotReturnsError) {
@@ -201,10 +195,8 @@ TEST_F(MessengerTest, Tick_MaxRetransmitCallsOnConTimeout) {
   EXPECT_EQ(handler_.timeout_count_, 1);
   EXPECT_EQ(handler_.last_timeout_mid_, 0x0007u);
 
-  // Slot must be freed.
-  for (const auto& slot : pool_) {
-    EXPECT_FALSE(slot.retry.active);
-  }
+  // Slot must be removed from the pending FIFO.
+  EXPECT_EQ(pool_.size(), 0u);
 }
 
 // ── ACK / RST tests ───────────────────────────────────────────────────────────
@@ -218,10 +210,8 @@ TEST_F(MessengerTest, ReceiveACK_ClearsPendingSlot) {
   transport_.InjectReceive(Endpoint{},
                            std::span<const std::byte>{ack_bytes.data(), ack_size});
 
-  for (const auto& slot : pool_) {
-    EXPECT_FALSE(slot.retry.active);
-  }
-  // Ticking now should not retransmit (slot is inactive).
+  EXPECT_EQ(pool_.size(), 0u);
+  // Ticking now should not retransmit (slot is removed).
   messenger_.Tick(60000u);
   EXPECT_EQ(transport_.sends_.size(), 1u);  // only the initial CON send
 }
@@ -235,9 +225,7 @@ TEST_F(MessengerTest, ReceiveRST_ClearsPendingSlot) {
   transport_.InjectReceive(Endpoint{},
                            std::span<const std::byte>{rst_bytes.data(), rst_size});
 
-  for (const auto& slot : pool_) {
-    EXPECT_FALSE(slot.retry.active);
-  }
+  EXPECT_EQ(pool_.size(), 0u);
 }
 
 // ── Receive dispatch tests ────────────────────────────────────────────────────
