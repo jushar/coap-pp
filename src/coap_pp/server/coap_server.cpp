@@ -11,9 +11,8 @@ namespace {
 
 // Build the request path ("/seg1/seg2") from Uri-Path options into buf.
 // Returns the number of characters written (0 if no Uri-Path options found).
-std::size_t JoinUriPath(const OptionsView& opts,
-                         char*              buf,
-                         std::size_t        buf_size) noexcept {
+std::size_t JoinUriPath(const OptionsView& opts, char* buf,
+                        std::size_t buf_size) noexcept {
   std::size_t len = 0;
   for (const auto& opt : opts) {
     if (opt.number != 11u) continue;  // only Uri-Path
@@ -30,111 +29,95 @@ std::size_t JoinUriPath(const OptionsView& opts,
   return len;
 }
 
-// Returns true if the method code is a valid RFC 7252 request method (0.01–0.04).
-bool IsKnownMethod(Code code) noexcept {
-  return code.ClassBits() == 0u &&
-         code.DetailBits() >= 1u &&
-         code.DetailBits() <= 4u;
-}
-
 }  // namespace
 
-CoapServer::CoapServer(Messenger&               messenger,
-                       std::span<ResourceEntry> resources) noexcept
-    : messenger_{messenger}, resources_{resources} {
+CoapServer::CoapServer(Messenger& messenger,
+                       std::span<Router*> routers) noexcept
+    : messenger_{messenger}, routers_{routers} {
   messenger_.SetHandler(*this);
 }
 
-void CoapServer::Register(std::string_view path, RequestHandler handler) {
-  if (resource_count_ >= resources_.size()) return;
-  auto& entry    = resources_[resource_count_++];
-  entry.path     = path;
-  entry.handler  = std::move(handler);
-  entry.occupied = true;
-}
-
-void CoapServer::RegisterAsync(std::string_view path, AsyncRequestHandler handler) {
-  if (resource_count_ >= resources_.size()) return;
-  auto& entry          = resources_[resource_count_++];
-  entry.path           = path;
-  entry.async_handler  = std::move(handler);
-  entry.occupied       = true;
-  entry.is_async       = true;
-}
-
-Responder::Responder(CoapServer& server, const Endpoint& endpoint,
-                     MessageType req_type, uint16_t req_mid,
-                     const Token& token) noexcept
-    : server_{&server}, endpoint_{endpoint}, token_{token},
-      req_mid_{req_mid}, req_type_{req_type} {}
-
-void Responder::Send(const Response& resp) noexcept {
-  server_->SendAsyncResponse(endpoint_, req_type_, req_mid_, token_, resp);
+void CoapServer::AddRouter(Router& router) noexcept {
+  if (router_count_ >= routers_.size()) return;
+  routers_[router_count_++] = &router;
 }
 
 void CoapServer::OnMessage(const Endpoint& sender,
-                            const Message&  msg) noexcept {
+                           const Message& msg) noexcept {
   // Ignore responses and pings (code class != 0, or code == 0.00).
   if (msg.code.ClassBits() != 0u || msg.code == codes::kEmpty) return;
 
   // Reconstruct the request URI path from Uri-Path options.
   char path_buf[256];
-  const std::size_t path_len = JoinUriPath(msg.options, path_buf, sizeof(path_buf));
+  const std::size_t path_len =
+      JoinUriPath(msg.options, path_buf, sizeof(path_buf));
   const std::string_view request_path{path_buf, path_len};
 
-  // Find a matching resource.
-  ResourceEntry* entry = nullptr;
-  for (std::size_t i = 0; i < resource_count_; ++i) {
-    if (resources_[i].occupied && resources_[i].path == request_path) {
-      entry = &resources_[i];
-      break;
+  // Find the matching route across all registered routers.
+  // Full path = router.base_path + route.path (e.g. "/api" + "/sensors" =
+  // "/api/sensors"). A path-only match (wrong method) yields 4.05; no path
+  // match yields 4.04.
+  bool path_matched = false;
+  const Route* found_route = nullptr;
+  for (std::size_t i = 0; i < router_count_; ++i) {
+    const Router& router = *routers_[i];
+    const auto base = router.GetBasePath();
+    if (!request_path.starts_with(base)) continue;
+    const auto suffix = request_path.substr(base.size());
+    for (const auto& route : router.GetRoutes()) {
+      if (route.path != suffix) continue;
+      path_matched = true;
+      if (route.method == msg.code) {
+        found_route = &route;
+        break;
+      }
     }
+    if (found_route != nullptr) break;
   }
 
-  if (entry == nullptr) {
-    SendResponse(sender, msg, Response{codes::kNotFound, {}});
+  if (found_route == nullptr) {
+    const Code error =
+        path_matched ? codes::kMethodNotAllowed : codes::kNotFound;
+    SendResponse(sender, msg, Response{error, {}});
     return;
   }
 
-  if (!IsKnownMethod(msg.code)) {
-    SendResponse(sender, msg, Response{codes::kMethodNotAllowed, {}});
-    return;
-  }
+  Request req{msg.code, msg.options, msg.payload,    *this,
+              sender,   msg.type,    msg.message_id, msg.token};
+  HandlerResult result = found_route->handler(req);
 
-  if (entry->is_async) {
-    Responder r{*this, sender, msg.type, msg.message_id, msg.token};
+  if (std::holds_alternative<Response>(result)) {
+    SendResponse(sender, msg, std::get<Response>(result));
+  } else {
+    // Async: for CON send an empty ACK immediately to stop client
+    // retransmissions. The actual reply arrives later via
+    // AsyncResponse::Send().
     if (msg.type == MessageType::kCon) {
       SendEmptyAck(sender, msg.message_id);
     }
-    entry->async_handler(Request{msg.code, msg.options, msg.payload}, std::move(r));
-  } else {
-    const Response resp = entry->handler(Request{msg.code, msg.options, msg.payload});
-    SendResponse(sender, msg, resp);
   }
 }
 
 void CoapServer::SendEmptyAck(const Endpoint& to,
-                               uint16_t message_id) noexcept {
+                              uint16_t message_id) noexcept {
   MessageBuilder<0> builder;
   builder.SetType(MessageType::kAck)
-         .SetCode(codes::kEmpty)
-         .SetMessageId(message_id);
+      .SetCode(codes::kEmpty)
+      .SetMessageId(message_id);
   (void)messenger_.Send(to, builder.Build());
 }
 
-void CoapServer::SendAsyncResponse(const Endpoint& to,
-                                    MessageType req_type,
-                                    uint16_t    req_mid,
-                                    const Token& token,
-                                    const Response& resp) noexcept {
+void CoapServer::SendAsyncResponse(const Endpoint& to, MessageType req_type,
+                                   uint16_t req_mid, const Token& token,
+                                   const Response& resp) noexcept {
   MessageBuilder<2> builder;
   // Originally-CON: empty ACK was already sent; deferred reply is a new CON.
   // Originally-NON: send NON with new MID.
   const bool was_con = (req_type == MessageType::kCon);
   builder.SetType(was_con ? MessageType::kCon : MessageType::kNon)
-         .SetCode(resp.code)
-         .SetMessageId(next_mid_++)
-         .SetToken(token);
+      .SetCode(resp.code)
+      .SetMessageId(next_mid_++)
+      .SetToken(token);
   if (resp.content_format != Response::kNoContentFormat) {
     builder.AddOption(12u, resp.content_format);
   }
@@ -144,17 +127,16 @@ void CoapServer::SendAsyncResponse(const Endpoint& to,
   (void)messenger_.Send(to, builder.Build());
 }
 
-void CoapServer::SendResponse(const Endpoint& to,
-                               const Message&  req,
-                               const Response& resp) noexcept {
+void CoapServer::SendResponse(const Endpoint& to, const Message& req,
+                              const Response& resp) noexcept {
   MessageBuilder<2> builder;
 
-  // CON request → piggybacked ACK (same MID); NON request → NON (new MID).
+  // CON request -> piggybacked ACK (same MID); NON request -> NON (new MID).
   const bool is_con = (req.type == MessageType::kCon);
   builder.SetType(is_con ? MessageType::kAck : MessageType::kNon)
-         .SetCode(resp.code)
-         .SetMessageId(is_con ? req.message_id : next_mid_++)
-         .SetToken(req.token);
+      .SetCode(resp.code)
+      .SetMessageId(is_con ? req.message_id : next_mid_++)
+      .SetToken(req.token);
 
   if (resp.content_format != Response::kNoContentFormat) {
     builder.AddOption(12u, resp.content_format);

@@ -7,6 +7,7 @@
 #include "coap_pp/messaging/messenger.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/server/coap_server.hpp"
+#include "coap_pp/server/router.hpp"
 #include "coap_pp_transport_posix/udp_transport.hpp"
 
 using namespace std::chrono_literals;
@@ -14,56 +15,67 @@ using namespace coap_pp;
 
 static std::atomic<bool> g_running{true};
 
+static constexpr std::string_view kHelloText = "Hello, CoAP World!";
+static constexpr std::string_view kSlowText = "slow response";
+
+class ExampleController final {
+ private:
+  HandlerResult HandleHello(const Request&) const {
+    return Response{
+        codes::kContent,
+        std::as_bytes(std::span{kHelloText.data(), kHelloText.size()}), 0u};
+  }
+
+  // Async: handler returns immediately; the detached thread delivers the
+  // actual response 2 seconds later via AsyncResponse::Send().
+  // For CON requests the server sends an empty ACK right away to stop
+  // client retransmissions; the deferred reply arrives as a new CON.
+  HandlerResult HandleSlow(const Request& req) const {
+    auto async = req.MakeAsync();
+    std::thread([a = async]() mutable {
+      std::this_thread::sleep_for(2s);
+      a.Send(Response{
+          codes::kContent,
+          std::as_bytes(std::span{kSlowText.data(), kSlowText.size()}), 0u});
+    }).detach();
+    return async;
+  }
+
+ public:
+  Router& BuildRouter() {
+    static std::array<Route, 2> routes{{
+        {codes::kGet, "/hello",
+         BindHandler<&ExampleController::HandleHello>(this)},
+        {codes::kGet, "/slow",
+         BindHandler<&ExampleController::HandleSlow>(this)},
+    }};
+    static Router router{"", routes};
+    return router;
+  }
+};
+
 int main() {
-  // ── Transport ────────────────────────────────────────────────────────────────
+  // ── Transport
+  // ────────────────────────────────────────────────────────────────
   PosixUdpTransport transport{5683};
 
-  // ── Messenger ────────────────────────────────────────────────────────────────
+  // ── Messenger
+  // ────────────────────────────────────────────────────────────────
   NetBuffer<Messenger::PendingSlot, 4> con_pool{};
   Messenger messenger{transport, con_pool};
 
-  // ── Server ───────────────────────────────────────────────────────────────────
-  std::array<ResourceEntry, 4> routes{};
-  CoapServer server{messenger, routes};
+  // ── Server
+  // ───────────────────────────────────────────────────────────────────
+  std::array<Router*, 4> router_storage{};
+  CoapServer server{messenger, router_storage};
 
-  // ── Resources ────────────────────────────────────────────────────────────────
-  static constexpr std::string_view kHelloText = "Hello, CoAP World!";
+  // ── Controllers
+  // ───────────────────────────────────────────────────────────────────
+  ExampleController example_controller{};
+  server.AddRouter(example_controller.BuildRouter());
 
-  server.Register("/hello", [](const Request& req) -> Response {
-    if (req.method != codes::kGet) {
-      return {codes::kMethodNotAllowed, {}};
-    }
-    return {
-        codes::kContent,
-        std::as_bytes(std::span{kHelloText.data(), kHelloText.size()}),
-        0u,  // Content-Format: text/plain (0)
-    };
-  });
-
-  // RegisterAsync: handler returns immediately; the Responder is stored and
-  // called later (here: after a 2-second simulated delay in a detached thread).
-  // For CON requests an empty ACK is sent right away to stop retransmissions;
-  // the actual response arrives as a separate CON once the work is done.
-  // NOTE: options/payload in req are only valid during this call — copy them
-  // before spawning the thread if needed.
-  server.RegisterAsync("/slow", [](const Request& req, Responder responder) {
-    if (req.method != codes::kGet) {
-      responder.Send({codes::kMethodNotAllowed, {}});
-      return;
-    }
-    // Detach a thread to simulate a slow operation (e.g. reading a sensor).
-    std::thread([r = std::move(responder)]() mutable {
-      std::this_thread::sleep_for(2s);
-      static constexpr std::string_view kSlowText = "slow response";
-      r.Send({
-          codes::kContent,
-          std::as_bytes(std::span{kSlowText.data(), kSlowText.size()}),
-          0u,
-      });
-    }).detach();
-  });
-
-  // ── Start ────────────────────────────────────────────────────────────────────
+  // ── Start
+  // ────────────────────────────────────────────────────────────────────
   if (transport.Start() != TransportError::kOk) {
     std::cerr << "Failed to start transport\n";
     return 1;
@@ -71,13 +83,13 @@ int main() {
 
   std::cout << "CoAP server listening on coap://127.0.0.1:5683\n";
   std::cout << "  GET  /hello  ->  2.05 Content: \"" << kHelloText << "\"\n";
-  std::cout << "  GET  /slow   ->  2.05 Content (after 2s delay)\n";
+  std::cout << "  GET  /slow   ->  2.05 Content (after 2s async delay)\n";
   std::cout << "  POST /hello  ->  4.05 Method Not Allowed\n";
   std::cout << "  GET  /other  ->  4.04 Not Found\n";
   std::cout << "Press Ctrl+C to stop.\n";
 
-  // ── Main loop ─────────────────────────────────────────────────────────────────
-  // Ctrl-C handler — must use signal-safe assignment only.
+  // ── Main loop
+  // ─────────────────────────────────────────────────────────────────
   std::signal(SIGINT, [](int) { g_running = false; });
 
   while (g_running) {
