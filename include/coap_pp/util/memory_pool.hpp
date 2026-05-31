@@ -8,14 +8,14 @@ namespace coap_pp {
 
 // Non-owning FIFO manager over a contiguous T array.
 // Holds a pointer to externally-managed storage, a capacity, and a live count.
-// NetBuffer<T, N> is the typical owner — it initialises NetBufferSpan with its
-// internal array.
+// MemoryPool<T, N> is the typical owner — it initialises MemoryPoolSpan with
+// its internal array.
 template <typename T>
-class NetBufferSpan {
+class MemoryPoolSpan {
  public:
   using size_type = std::size_t;
 
-  NetBufferSpan(T* data, std::size_t capacity) noexcept
+  MemoryPoolSpan(T* data, std::size_t capacity) noexcept
       : data_{data}, capacity_{capacity} {}
 
   [[nodiscard]] bool empty() const noexcept { return count_ == 0; }
@@ -64,49 +64,23 @@ class NetBufferSpan {
   std::size_t count_{0};
 };
 
-// Fixed-capacity FIFO queue backed by a stack-allocated array.
-// All FIFO operations are on the NetBufferSpan<T> member; NetBuffer delegates
-// to it. Non-copyable/non-movable — interface_ holds a pointer into the
-// internal array.
+// Memory pool storage. Use MemoryPoolSpan to modify it.
 template <typename T, std::size_t Capacity>
-class NetBuffer {
+class MemoryPool {
  public:
-  NetBuffer() noexcept : interface_{storage_.data(), Capacity} {}
+  MemoryPool() noexcept {}
 
-  NetBuffer(const NetBuffer&) = delete;
-  NetBuffer& operator=(const NetBuffer&) = delete;
+  MemoryPool(const MemoryPool&) = delete;
+  MemoryPool& operator=(const MemoryPool&) = delete;
 
-  [[nodiscard]] bool empty() const noexcept { return interface_.empty(); }
-  [[nodiscard]] bool full() const noexcept { return interface_.full(); }
-  [[nodiscard]] std::size_t size() const noexcept { return interface_.size(); }
-
-  T& front() noexcept { return interface_.front(); }
-  const T& front() const noexcept { return interface_.front(); }
-
-  T& back() noexcept { return interface_.back(); }
-  const T& back() const noexcept { return interface_.back(); }
-
-  template <typename... Args>
-  T& emplace_back(Args&&... args) noexcept {
-    return interface_.emplace_back(std::forward<Args>(args)...);
-  }
-
-  void pop_front() noexcept { interface_.pop_front(); }
-  void pop_back() noexcept { interface_.pop_back(); }
-
-  template <typename Pred>
-  void remove_if(Pred&& pred) noexcept {
-    interface_.remove_if(std::forward<Pred>(pred));
-  }
-
-  // Allows passing a NetBuffer<T, N> directly where a NetBufferSpan<T>& is
+  // Allows passing a MemoryPool<T, N> directly where a MemoryPoolSpan<T> is
   // expected.
-  operator NetBufferSpan<T>&() noexcept { return interface_; }
+  operator MemoryPoolSpan<T>() noexcept {
+    return MemoryPoolSpan<T>{storage_.data(), Capacity};
+  }
 
  private:
-  std::array<T, Capacity>
-      storage_{};  // declared first — initialised before interface_
-  NetBufferSpan<T> interface_;
+  std::array<T, Capacity> storage_{};
 };
 
 }  // namespace coap_pp

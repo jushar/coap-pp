@@ -3,13 +3,14 @@
 #include "coap_pp/messaging/messenger.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/pdu/serialize.hpp"
-#include "coap_pp/util/net_buffer.hpp"
+#include "coap_pp/util/memory_pool.hpp"
 #include "coap_pp/util/static_vector.hpp"
 
 namespace coap_pp {
 namespace {
 
-// ── Mock transport ────────────────────────────────────────────────────────────
+// ── Mock transport
+// ────────────────────────────────────────────────────────────
 
 struct RecordedSend {
   Endpoint destination{};
@@ -24,13 +25,13 @@ class MockTransport : public TransportIF {
   TransportError Start() noexcept override { return TransportError::kOk; }
   void Stop() noexcept override {}
 
-  TransportError Send(const Endpoint&            dest,
+  TransportError Send(const Endpoint& dest,
                       std::span<const std::byte> data) noexcept override {
     if (sends_.full()) return {};
     sends_.push_back({});
     auto& r = sends_.back();
     r.destination = dest;
-    r.size        = data.size();
+    r.size = data.size();
     std::copy(data.begin(), data.end(), r.data.begin());
     return {};
   }
@@ -47,7 +48,8 @@ class MockTransport : public TransportIF {
   TransportReceiverIF* receiver_{nullptr};
 };
 
-// ── Mock handler ──────────────────────────────────────────────────────────────
+// ── Mock handler
+// ──────────────────────────────────────────────────────────────
 
 class MockHandler : public MessageHandlerIF {
  public:
@@ -58,12 +60,11 @@ class MockHandler : public MessageHandlerIF {
     bool valid{false};
   };
 
-  void OnMessage(const Endpoint& sender,
-                 const Message&  msg) noexcept override {
-    last_.sender     = sender;
-    last_.type       = msg.type;
+  void OnMessage(const Endpoint& sender, const Message& msg) noexcept override {
+    last_.sender = sender;
+    last_.type = msg.type;
     last_.message_id = msg.message_id;
-    last_.valid      = true;
+    last_.valid = true;
     ++message_count_;
   }
 
@@ -78,18 +79,17 @@ class MockHandler : public MessageHandlerIF {
   int timeout_count_{0};
 };
 
-// ── Fixture ───────────────────────────────────────────────────────────────────
+// ── Fixture
+// ───────────────────────────────────────────────────────────────────
 
 class MessengerTest : public ::testing::Test {
  protected:
   MockTransport transport_;
-  NetBuffer<Messenger::PendingSlot, 4> pool_{};
+  MemoryPool<Messenger::PendingSlot, 4> pool_{};
   Messenger messenger_{transport_, pool_};
   MockHandler handler_;
 
-  void SetUp() override {
-    messenger_.SetHandler(handler_);
-  }
+  void SetUp() override { messenger_.SetHandler(handler_); }
 
   // Build and return the raw bytes of an ACK with a given MID.
   std::pair<std::array<std::byte, 8>, std::size_t> MakeAckBytes(uint16_t mid) {
@@ -115,7 +115,8 @@ class MessengerTest : public ::testing::Test {
   }
 };
 
-// ── Send tests ────────────────────────────────────────────────────────────────
+// ── Send tests
+// ────────────────────────────────────────────────────────────────
 
 TEST_F(MessengerTest, SendNON_TransmittedImmediately) {
   MessageBuilder<0> b;
@@ -124,7 +125,8 @@ TEST_F(MessengerTest, SendNON_TransmittedImmediately) {
 
   EXPECT_EQ(transport_.sends_.size(), 1u);
   // NON should not occupy a pending slot.
-  EXPECT_EQ(pool_.size(), 0u);
+  EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
+            0u);
 }
 
 TEST_F(MessengerTest, SendCON_OccupiesPendingSlot) {
@@ -133,7 +135,8 @@ TEST_F(MessengerTest, SendCON_OccupiesPendingSlot) {
   ASSERT_EQ(messenger_.Send(Endpoint{}, b.Build()), MessengerError::kOk);
 
   EXPECT_EQ(transport_.sends_.size(), 1u);
-  EXPECT_EQ(pool_.size(), 1u);
+  EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
+            1u);
 }
 
 TEST_F(MessengerTest, SendCON_NoPendingSlotReturnsError) {
@@ -146,10 +149,12 @@ TEST_F(MessengerTest, SendCON_NoPendingSlotReturnsError) {
 
   MessageBuilder<0> b;
   b.SetType(MessageType::kCon).SetCode(codes::kGet).SetMessageId(99u);
-  EXPECT_EQ(messenger_.Send(Endpoint{}, b.Build()), MessengerError::kNoPendingSlot);
+  EXPECT_EQ(messenger_.Send(Endpoint{}, b.Build()),
+            MessengerError::kNoPendingSlot);
 }
 
-// ── Retransmission tests ──────────────────────────────────────────────────────
+// ── Retransmission tests
+// ──────────────────────────────────────────────────────
 
 TEST_F(MessengerTest, Tick_TriggersRetransmitAfterTimeout) {
   MessageBuilder<0> b;
@@ -196,10 +201,12 @@ TEST_F(MessengerTest, Tick_MaxRetransmitCallsOnConTimeout) {
   EXPECT_EQ(handler_.last_timeout_mid_, 0x0007u);
 
   // Slot must be removed from the pending FIFO.
-  EXPECT_EQ(pool_.size(), 0u);
+  EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
+            0u);
 }
 
-// ── ACK / RST tests ───────────────────────────────────────────────────────────
+// ── ACK / RST tests
+// ───────────────────────────────────────────────────────────
 
 TEST_F(MessengerTest, ReceiveACK_ClearsPendingSlot) {
   MessageBuilder<0> b;
@@ -207,10 +214,11 @@ TEST_F(MessengerTest, ReceiveACK_ClearsPendingSlot) {
   ASSERT_EQ(messenger_.Send(Endpoint{}, b.Build()), MessengerError::kOk);
 
   auto [ack_bytes, ack_size] = MakeAckBytes(0x0010u);
-  transport_.InjectReceive(Endpoint{},
-                           std::span<const std::byte>{ack_bytes.data(), ack_size});
+  transport_.InjectReceive(
+      Endpoint{}, std::span<const std::byte>{ack_bytes.data(), ack_size});
 
-  EXPECT_EQ(pool_.size(), 0u);
+  EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
+            0u);
   // Ticking now should not retransmit (slot is removed).
   messenger_.Tick(60000u);
   EXPECT_EQ(transport_.sends_.size(), 1u);  // only the initial CON send
@@ -222,13 +230,15 @@ TEST_F(MessengerTest, ReceiveRST_ClearsPendingSlot) {
   ASSERT_EQ(messenger_.Send(Endpoint{}, b.Build()), MessengerError::kOk);
 
   auto [rst_bytes, rst_size] = MakeRstBytes(0x0020u);
-  transport_.InjectReceive(Endpoint{},
-                           std::span<const std::byte>{rst_bytes.data(), rst_size});
+  transport_.InjectReceive(
+      Endpoint{}, std::span<const std::byte>{rst_bytes.data(), rst_size});
 
-  EXPECT_EQ(pool_.size(), 0u);
+  EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
+            0u);
 }
 
-// ── Receive dispatch tests ────────────────────────────────────────────────────
+// ── Receive dispatch tests
+// ────────────────────────────────────────────────────
 
 TEST_F(MessengerTest, OnReceive_DispatchesToHandler) {
   // Build a raw NON GET datagram.
@@ -248,7 +258,8 @@ TEST_F(MessengerTest, OnReceive_DispatchesToHandler) {
 
 TEST_F(MessengerTest, OnReceive_MalformedDatagram_SilentlyDiscarded) {
   // 3 bytes — too short to be a valid CoAP message.
-  const auto bad = std::array{std::byte{0x40}, std::byte{0x01}, std::byte{0x00}};
+  const auto bad =
+      std::array{std::byte{0x40}, std::byte{0x01}, std::byte{0x00}};
   transport_.InjectReceive(Endpoint{}, bad);
 
   EXPECT_EQ(handler_.message_count_, 0);

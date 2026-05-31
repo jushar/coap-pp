@@ -9,21 +9,22 @@
 
 namespace coap_pp {
 
-// High-level CoAP server: dispatches incoming requests to registered Router objects.
+// High-level CoAP server: dispatches incoming requests to registered Router
+// objects.
 //
 // Usage:
 //   std::array<Router*, 4> router_storage{};
 //   CoapServer server{messenger, router_storage};
 //
-//   static const std::array<Route, 1> kRoutes = {{{codes::kGet, "/temperature", handle_temp}}};
-//   Router api{"/api", kRoutes};
-//   server.AddRouter(api);
+//   static const std::array<Route, 1> kRoutes = {{{codes::kGet, "/temperature",
+//   handle_temp}}}; Router api{"/api", kRoutes}; server.AddRouter(api);
 //
 //   // CON requests automatically get piggybacked ACK responses.
 //   // Unregistered paths -> 4.04 Not Found.
 //   // Path matched but wrong method -> 4.05 Method Not Allowed.
-//   // Async handlers return AsyncResponse from req.MakeAsync() instead of Response.
-class CoapServer : public MessageHandlerIF {
+//   // Async handlers return AsyncResponse from req.MakeAsync() instead of
+//   Response.
+class CoapServer : private MessageHandlerIF {
  public:
   // Calls messenger.SetHandler(*this) immediately.
   // routers is caller-provided storage for Router pointers.
@@ -32,31 +33,29 @@ class CoapServer : public MessageHandlerIF {
   // Mount a router. Silently no-ops when the routers span is full.
   void AddRouter(Router& router) noexcept;
 
+ private:
   // MessageHandlerIF
-  void OnMessage(const Endpoint& sender,
-                 const Message&  msg) noexcept override;
+  void OnMessage(const Endpoint& sender, const Message& msg) noexcept override;
   void OnConTimeout(uint16_t /*message_id*/) noexcept override {}
 
- private:
-  friend class AsyncResponse;
-
-  void SendResponse(const Endpoint& to,
-                    const Message&  req,
+  void SendResponse(const Endpoint& to, const Message& req,
                     const Response& resp) noexcept;
 
   // Called by AsyncResponse::Send() to deliver a deferred reply.
   // Originally-CON requests: reply is a new CON with a fresh MID.
   // Originally-NON requests: reply is a NON with a fresh MID.
   void SendAsyncResponse(const Endpoint& to, MessageType req_type,
-                          uint16_t req_mid, const Token& token,
-                          const Response& resp) noexcept;
+                         uint16_t req_mid, const Token& token,
+                         const Response& resp) noexcept;
 
   void SendEmptyAck(const Endpoint& to, uint16_t message_id) noexcept;
 
-  Messenger&         messenger_;
+  friend class AsyncResponse;
+
+  Messenger& messenger_;
   std::span<Router*> routers_;
-  std::size_t        router_count_{0};
-  uint16_t           next_mid_{1u};
+  std::size_t router_count_{0};
+  uint16_t next_mid_{1u};
 };
 
 }  // namespace coap_pp

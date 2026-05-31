@@ -30,7 +30,7 @@ void Messenger::RetransmitState::Reset(uint32_t initial_timeout_ms) noexcept {
 }
 
 Messenger::Messenger(TransportIF& transport,
-                     NetBufferSpan<PendingSlot>& pool) noexcept
+                     MemoryPoolSpan<PendingSlot> pool) noexcept
     : transport_{transport}, pending_{pool} {
   transport_.SetReceiver(*this);
 }

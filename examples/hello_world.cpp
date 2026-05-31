@@ -61,7 +61,7 @@ int main() {
 
   // ── Messenger
   // ────────────────────────────────────────────────────────────────
-  NetBuffer<Messenger::PendingSlot, 4> con_pool{};
+  MemoryPool<Messenger::PendingSlot, 4> con_pool{};
   Messenger messenger{transport, con_pool};
 
   // ── Server

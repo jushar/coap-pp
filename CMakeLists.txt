@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.30)
 project(coap-pp VERSION 0.1.0 LANGUAGES CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 add_library(coap-pp STATIC
     src/coap_pp/pdu/deserialize.cpp
     src/coap_pp/pdu/serialize.cpp

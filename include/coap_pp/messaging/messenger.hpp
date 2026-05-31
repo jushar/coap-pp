@@ -9,7 +9,7 @@
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/transport/endpoint.hpp"
 #include "coap_pp/transport/transport_if.hpp"
-#include "coap_pp/util/net_buffer.hpp"
+#include "coap_pp/util/memory_pool.hpp"
 
 namespace coap_pp {
 
@@ -40,7 +40,7 @@ class MessageHandlerIF {
 // retransmission.
 //
 // Usage:
-//   NetBuffer<Messenger::PendingSlot, 4> pool;
+//   MemoryPool<Messenger::PendingSlot, 4> pool;
 //   Messenger messenger{transport, pool};
 //   messenger.SetHandler(myHandler);
 //   // In application tick (e.g., every 100 ms):
@@ -71,10 +71,10 @@ class Messenger : public TransportReceiverIF {
     RetransmitState retry{};
   };
 
-  // pool is a NetBufferSpan<PendingSlot> — typically a NetBuffer<PendingSlot,
+  // pool is a MemoryPoolSpan<PendingSlot> — typically a MemoryPool<PendingSlot,
   // N> that implicitly converts. The Messenger holds a reference; the pool must
   // outlive it. Registers *this as the transport's receiver immediately.
-  Messenger(TransportIF& transport, NetBufferSpan<PendingSlot>& pool) noexcept;
+  Messenger(TransportIF& transport, MemoryPoolSpan<PendingSlot> pool) noexcept;
 
   void SetHandler(MessageHandlerIF& handler) noexcept;
 
@@ -97,7 +97,7 @@ class Messenger : public TransportReceiverIF {
 
   TransportIF& transport_;
   MessageHandlerIF* handler_{nullptr};
-  NetBufferSpan<PendingSlot>& pending_;
+  MemoryPoolSpan<PendingSlot> pending_;
   std::array<std::byte, kMaxMessageSize> tx_scratch_{};
 };
 
