@@ -9,6 +9,7 @@ add_executable(coap-pp-tests
 target_link_libraries(coap-pp-tests PRIVATE
     coap-pp
     GTest::gtest_main
+    coap-pp-warnings
 )
 
 target_compile_features(coap-pp-tests PRIVATE cxx_std_20)

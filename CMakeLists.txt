@@ -3,6 +3,9 @@ project(coap-pp VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+add_library(coap-pp-warnings INTERFACE)
+target_compile_options(coap-pp-warnings INTERFACE -Wall -Wpedantic -Werror)
+
 add_library(coap-pp STATIC
     src/coap_pp/pdu/deserialize.cpp
     src/coap_pp/pdu/serialize.cpp
@@ -12,6 +15,7 @@ add_library(coap-pp STATIC
 )
 
 target_compile_features(coap-pp PUBLIC cxx_std_20)
+target_link_libraries(coap-pp PRIVATE coap-pp-warnings)
 
 target_include_directories(coap-pp
     PUBLIC
@@ -25,7 +29,7 @@ find_package(Threads REQUIRED)
 add_library(coap-pp-transport-udp-ip-slip STATIC
     src/coap_pp_transport_udp_ip_slip/udp_ip_slip_transport.cpp
 )
-target_link_libraries(coap-pp-transport-udp-ip-slip PUBLIC coap-pp Threads::Threads)
+target_link_libraries(coap-pp-transport-udp-ip-slip PUBLIC coap-pp Threads::Threads PRIVATE coap-pp-warnings)
 target_compile_features(coap-pp-transport-udp-ip-slip PUBLIC cxx_std_20)
 
 # POSIX transport + examples (Linux / macOS only)
@@ -36,7 +40,7 @@ if(UNIX)
         add_library(coap-pp-transport-posix STATIC
             src/coap_pp_transport_posix/udp_transport.cpp
         )
-        target_link_libraries(coap-pp-transport-posix PUBLIC coap-pp Threads::Threads)
+        target_link_libraries(coap-pp-transport-posix PUBLIC coap-pp Threads::Threads PRIVATE coap-pp-warnings)
         target_compile_features(coap-pp-transport-posix PUBLIC cxx_std_20)
 
         option(COAP_PP_BUILD_EXAMPLES "Build example programs" ON)
