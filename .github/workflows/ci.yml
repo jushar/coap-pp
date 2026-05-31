@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - { name: gcc,   cc: gcc-14,    cxx: g++-14      }
+          - { name: clang, cc: clang-18,  cxx: clang++-18  }
+
+    name: ${{ matrix.compiler.name }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ${{ matrix.compiler.cc }} ${{ matrix.compiler.cxx }}
+
+      - name: Cache googletest
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: gtest-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.compiler.cc }}
+          CXX: ${{ matrix.compiler.cxx }}
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCOAP_PP_BUILD_TESTS=ON \
+            -DCOAP_PP_BUILD_EXAMPLES=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure --parallel
