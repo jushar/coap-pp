@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_TRANSPORT_ENDPOINT_HPP
+#define COAP_PP_TRANSPORT_ENDPOINT_HPP
 
 #include <array>
 #include <cstddef>
@@ -40,3 +41,5 @@ struct Endpoint {
 };
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_TRANSPORT_ENDPOINT_HPP

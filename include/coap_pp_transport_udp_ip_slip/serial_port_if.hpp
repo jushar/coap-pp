@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_TRANSPORT_UDP_IP_SLIP_SERIAL_PORT_IF_HPP
+#define COAP_PP_TRANSPORT_UDP_IP_SLIP_SERIAL_PORT_IF_HPP
 
 #include <cstddef>
 #include <span>
@@ -31,3 +32,5 @@ class SerialPortIF {
 };
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_TRANSPORT_UDP_IP_SLIP_SERIAL_PORT_IF_HPP

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_UTIL_STATIC_VECTOR_HPP
+#define COAP_PP_UTIL_STATIC_VECTOR_HPP
 
 #include <array>
 #include <cstddef>
@@ -67,3 +68,5 @@ class StaticVector {
 };
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_UTIL_STATIC_VECTOR_HPP

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_PDU_MESSAGE_HPP
+#define COAP_PP_PDU_MESSAGE_HPP
 
 #include <array>
 #include <cstddef>
@@ -103,3 +104,5 @@ struct Message {
 };
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_PDU_MESSAGE_HPP

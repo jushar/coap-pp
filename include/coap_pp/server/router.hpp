@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_SERVER_ROUTER_HPP
+#define COAP_PP_SERVER_ROUTER_HPP
 
 #include <span>
 #include <string_view>
@@ -41,3 +42,5 @@ class Router {
 };
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_SERVER_ROUTER_HPP

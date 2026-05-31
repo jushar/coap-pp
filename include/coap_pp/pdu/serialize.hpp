@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_PDU_SERIALIZE_HPP
+#define COAP_PP_PDU_SERIALIZE_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -34,3 +35,5 @@ enum class SerializeError : uint8_t {
                                        std::size_t& written) noexcept;
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_PDU_SERIALIZE_HPP

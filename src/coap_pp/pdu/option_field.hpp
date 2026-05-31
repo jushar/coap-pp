@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_PDU_OPTION_FIELD_HPP
+#define COAP_PP_PDU_OPTION_FIELD_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -65,3 +66,5 @@ namespace coap_pp {
 }
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_PDU_OPTION_FIELD_HPP

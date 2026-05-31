@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_TRANSPORT_TRANSPORT_IF_HPP
+#define COAP_PP_TRANSPORT_TRANSPORT_IF_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -66,3 +67,5 @@ class TransportIF {
 };
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_TRANSPORT_TRANSPORT_IF_HPP

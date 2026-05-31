@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_TRANSPORT_UDP_IP_SLIP_UDP_IP_SLIP_TRANSPORT_HPP
+#define COAP_PP_TRANSPORT_UDP_IP_SLIP_UDP_IP_SLIP_TRANSPORT_HPP
 
 #include <array>
 #include <atomic>
@@ -73,3 +74,5 @@ class UdpIpSlipTransport : public TransportIF {
 };
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_TRANSPORT_UDP_IP_SLIP_UDP_IP_SLIP_TRANSPORT_HPP

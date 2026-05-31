@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_PDU_OPTION_HPP
+#define COAP_PP_PDU_OPTION_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -198,3 +199,5 @@ class OptionsView {
 };
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_PDU_OPTION_HPP

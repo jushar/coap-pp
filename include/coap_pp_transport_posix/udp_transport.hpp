@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_TRANSPORT_POSIX_UDP_TRANSPORT_HPP
+#define COAP_PP_TRANSPORT_POSIX_UDP_TRANSPORT_HPP
 
 #include <atomic>
 #include <cstdint>
@@ -51,3 +52,5 @@ class PosixUdpTransport : public TransportIF {
 };
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_TRANSPORT_POSIX_UDP_TRANSPORT_HPP

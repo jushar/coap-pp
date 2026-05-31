@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_SERVER_COAP_SERVER_HPP
+#define COAP_PP_SERVER_COAP_SERVER_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -59,3 +60,5 @@ class CoapServer : private MessageHandlerIF {
 };
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_SERVER_COAP_SERVER_HPP

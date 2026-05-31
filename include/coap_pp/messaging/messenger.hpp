@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_MESSAGING_MESSENGER_HPP
+#define COAP_PP_MESSAGING_MESSENGER_HPP
 
 #include <array>
 #include <cstddef>
@@ -102,3 +103,5 @@ class Messenger : public TransportReceiverIF {
 };
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_MESSAGING_MESSENGER_HPP

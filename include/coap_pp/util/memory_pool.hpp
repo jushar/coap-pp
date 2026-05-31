@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_UTIL_MEMORY_POOL_HPP
+#define COAP_PP_UTIL_MEMORY_POOL_HPP
 
 #include <array>
 #include <cstddef>
@@ -84,3 +85,5 @@ class MemoryPool {
 };
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_UTIL_MEMORY_POOL_HPP

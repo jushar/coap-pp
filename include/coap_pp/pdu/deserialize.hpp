@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_PDU_DESERIALIZE_HPP
+#define COAP_PP_PDU_DESERIALIZE_HPP
 
 #include <cstdint>
 #include <span>
@@ -24,3 +25,5 @@ enum class DeserializeError : uint8_t {
                                            Message& out) noexcept;
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_PDU_DESERIALIZE_HPP

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_SERVER_RESOURCE_HPP
+#define COAP_PP_SERVER_RESOURCE_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -92,3 +93,5 @@ RequestHandler BindHandler(T* self) {
 }
 
 }  // namespace coap_pp
+
+#endif  // COAP_PP_SERVER_RESOURCE_HPP
