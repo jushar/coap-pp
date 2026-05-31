@@ -69,19 +69,18 @@ class MemoryPoolSpan {
 template <typename T, std::size_t Capacity>
 class MemoryPool {
  public:
-  MemoryPool() noexcept {}
+  MemoryPool() noexcept : span_{storage_.data(), Capacity} {}
 
   MemoryPool(const MemoryPool&) = delete;
   MemoryPool& operator=(const MemoryPool&) = delete;
 
-  // Allows passing a MemoryPool<T, N> directly where a MemoryPoolSpan<T> is
+  // Allows passing a MemoryPool<T, N> directly where a MemoryPoolSpan<T>& is
   // expected.
-  operator MemoryPoolSpan<T>() noexcept {
-    return MemoryPoolSpan<T>{storage_.data(), Capacity};
-  }
+  operator MemoryPoolSpan<T>&() noexcept { return span_; }
 
  private:
   std::array<T, Capacity> storage_{};
+  MemoryPoolSpan<T> span_;
 };
 
 }  // namespace coap_pp
