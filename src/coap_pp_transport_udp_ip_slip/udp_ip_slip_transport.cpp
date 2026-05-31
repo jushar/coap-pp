@@ -6,7 +6,7 @@
 namespace coap_pp {
 namespace {
 
-constexpr std::size_t kIpHeaderSize  = 20;
+constexpr std::size_t kIpHeaderSize = 20;
 constexpr std::size_t kUdpHeaderSize = 8;
 
 // SLIP (RFC 1055) special bytes.
@@ -32,15 +32,15 @@ uint16_t Ipv4Checksum(const std::byte* header) noexcept {
 
 }  // namespace
 
-UdpIpSlipTransport::UdpIpSlipTransport(SerialPortIF&          serial,
-                                        std::array<uint8_t, 4> local_ip,
-                                        uint16_t local_port) noexcept
+UdpIpSlipTransport::UdpIpSlipTransport(SerialPortIF& serial,
+                                       std::array<uint8_t, 4> local_ip,
+                                       uint16_t local_port) noexcept
     : serial_{serial}, local_ip_{local_ip}, local_port_{local_port} {}
 
 UdpIpSlipTransport::~UdpIpSlipTransport() noexcept { Stop(); }
 
 TransportError UdpIpSlipTransport::Start() noexcept {
-  running_     = true;
+  running_ = true;
   recv_thread_ = std::thread{[this] { ReceiveLoop(); }};
   return TransportError::kOk;
 }
@@ -51,15 +51,12 @@ void UdpIpSlipTransport::Stop() noexcept {
 }
 
 TransportError UdpIpSlipTransport::Send(
-    const Endpoint&            destination,
-    std::span<const std::byte> data) noexcept {
+    const Endpoint& destination, std::span<const std::byte> data) noexcept {
   if (data.size() > kMaxMessageSize) return TransportError::kError;
 
-  const auto     payload_size = data.size();
-  const uint16_t udp_len =
-      static_cast<uint16_t>(kUdpHeaderSize + payload_size);
-  const uint16_t ip_total_len =
-      static_cast<uint16_t>(kIpHeaderSize + udp_len);
+  const auto payload_size = data.size();
+  const uint16_t udp_len = static_cast<uint16_t>(kUdpHeaderSize + payload_size);
+  const uint16_t ip_total_len = static_cast<uint16_t>(kIpHeaderSize + udp_len);
 
   // Build the raw IP packet into a stack buffer.
   std::array<std::byte, kIpHeaderSize + kUdpHeaderSize + kMaxMessageSize>
@@ -72,27 +69,28 @@ TransportError UdpIpSlipTransport::Send(
   packet[3] = std::byte{static_cast<uint8_t>(ip_total_len)};
 
   const uint16_t id = ip_id_++;
-  packet[4]         = std::byte{static_cast<uint8_t>(id >> 8)};
-  packet[5]         = std::byte{static_cast<uint8_t>(id)};
+  packet[4] = std::byte{static_cast<uint8_t>(id >> 8)};
+  packet[5] = std::byte{static_cast<uint8_t>(id)};
 
   packet[6] = std::byte{0x40};  // Flags: DF=1, MF=0; Fragment Offset=0
   packet[7] = std::byte{0x00};
-  packet[8] = std::byte{64};   // TTL
-  packet[9] = std::byte{17};   // Protocol: UDP
+  packet[8] = std::byte{64};  // TTL
+  packet[9] = std::byte{17};  // Protocol: UDP
 
   // Checksum field left as 0x0000 for now; filled in after computation.
   packet[10] = std::byte{0x00};
   packet[11] = std::byte{0x00};
 
-  std::memcpy(packet.data() + 12, local_ip_.data(), 4);         // Source IP
+  std::memcpy(packet.data() + 12, local_ip_.data(), 4);            // Source IP
   std::memcpy(packet.data() + 16, destination.storage.data(), 4);  // Dest IP
 
   const uint16_t checksum = Ipv4Checksum(packet.data());
-  packet[10]              = std::byte{static_cast<uint8_t>(checksum >> 8)};
-  packet[11]              = std::byte{static_cast<uint8_t>(checksum)};
+  packet[10] = std::byte{static_cast<uint8_t>(checksum >> 8)};
+  packet[11] = std::byte{static_cast<uint8_t>(checksum)};
 
   // UDP header (RFC 768).
-  packet[20] = std::byte{static_cast<uint8_t>(local_port_ >> 8)};  // Source port
+  packet[20] =
+      std::byte{static_cast<uint8_t>(local_port_ >> 8)};  // Source port
   packet[21] = std::byte{static_cast<uint8_t>(local_port_)};
   packet[22] = destination.storage[4];  // Dest port — already network order
   packet[23] = destination.storage[5];
@@ -119,7 +117,7 @@ Endpoint UdpIpSlipTransport::LocalEndpoint() const noexcept {
 }
 
 Endpoint UdpIpSlipTransport::MakeEndpoint(std::array<uint8_t, 4> ip,
-                                           uint16_t port) noexcept {
+                                          uint16_t port) noexcept {
   Endpoint ep{};
   std::memcpy(ep.storage.data(), ip.data(), 4);
   ep.storage[4] = std::byte{static_cast<uint8_t>(port >> 8)};
@@ -164,7 +162,7 @@ void UdpIpSlipTransport::ProcessFrame(
   if (frame.size() < kIpHeaderSize + kUdpHeaderSize) return;
 
   // IPv4 version and header length.
-  const uint8_t   version_ihl = std::to_integer<uint8_t>(frame[0]);
+  const uint8_t version_ihl = std::to_integer<uint8_t>(frame[0]);
   if ((version_ihl >> 4) != 4) return;  // Not IPv4.
   const std::size_t ihl = static_cast<std::size_t>(version_ihl & 0x0Fu) * 4;
   if (ihl < kIpHeaderSize || frame.size() < ihl + kUdpHeaderSize) return;
@@ -177,15 +175,16 @@ void UdpIpSlipTransport::ProcessFrame(
   // UDP destination port — frame bytes are network (big-endian) order.
   const uint16_t dst_port =
       (static_cast<uint16_t>(std::to_integer<uint8_t>(frame[ihl + 2])) << 8) |
-       static_cast<uint16_t>(std::to_integer<uint8_t>(frame[ihl + 3]));
+      static_cast<uint16_t>(std::to_integer<uint8_t>(frame[ihl + 3]));
   if (dst_port != local_port_) return;
 
   // UDP payload length from the UDP Length field (includes the 8-byte header).
   const uint16_t udp_len =
       (static_cast<uint16_t>(std::to_integer<uint8_t>(frame[ihl + 4])) << 8) |
-       static_cast<uint16_t>(std::to_integer<uint8_t>(frame[ihl + 5]));
+      static_cast<uint16_t>(std::to_integer<uint8_t>(frame[ihl + 5]));
   if (udp_len < kUdpHeaderSize) return;
-  const std::size_t coap_size = static_cast<std::size_t>(udp_len) - kUdpHeaderSize;
+  const std::size_t coap_size =
+      static_cast<std::size_t>(udp_len) - kUdpHeaderSize;
 
   const std::size_t payload_offset = ihl + kUdpHeaderSize;
   if (payload_offset + coap_size > frame.size()) return;
@@ -206,10 +205,10 @@ void UdpIpSlipTransport::ProcessFrame(
 void UdpIpSlipTransport::ReceiveLoop() noexcept {
   std::array<std::byte, kIpHeaderSize + kUdpHeaderSize + kMaxMessageSize>
       frame_buf{};
-  std::size_t frame_len      = 0;
-  bool        in_frame       = false;
-  bool        escaped        = false;
-  bool        frame_overflow = false;
+  std::size_t frame_len = 0;
+  bool in_frame = false;
+  bool escaped = false;
+  bool frame_overflow = false;
 
   while (running_) {
     const int c = serial_.ReadByte();
@@ -226,8 +225,8 @@ void UdpIpSlipTransport::ReceiveLoop() noexcept {
         decoded = kSlipEsc;
       } else {
         // Protocol error: discard the current frame.
-        frame_len      = 0;
-        in_frame       = false;
+        frame_len = 0;
+        in_frame = false;
         frame_overflow = false;
         continue;
       }
@@ -245,8 +244,8 @@ void UdpIpSlipTransport::ReceiveLoop() noexcept {
       if (in_frame && frame_len > 0 && !frame_overflow) {
         ProcessFrame(std::span<const std::byte>{frame_buf.data(), frame_len});
       }
-      frame_len      = 0;
-      in_frame       = true;
+      frame_len = 0;
+      in_frame = true;
       frame_overflow = false;
     } else if (b == kSlipEsc) {
       escaped = true;

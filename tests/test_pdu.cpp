@@ -1,18 +1,23 @@
 #include <gtest/gtest.h>
 
-#include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/deserialize.hpp"
+#include "coap_pp/pdu/message.hpp"
 
-// Convenience: allow ASSERT_EQ(Deserialize(...), DeserializeError::kOk) to print the enum
-// value on failure without extra boilerplate.
+// Convenience: allow ASSERT_EQ(Deserialize(...), DeserializeError::kOk) to
+// print the enum value on failure without extra boilerplate.
 namespace coap_pp {
 inline std::ostream& operator<<(std::ostream& os, DeserializeError e) {
   switch (e) {
-    case DeserializeError::kOk:                 return os << "kOk";
-    case DeserializeError::kMessageTooShort:    return os << "kMessageTooShort";
-    case DeserializeError::kInvalidVersion:     return os << "kInvalidVersion";
-    case DeserializeError::kInvalidTokenLength: return os << "kInvalidTokenLength";
-    case DeserializeError::kInvalidOption:      return os << "kInvalidOption";
+    case DeserializeError::kOk:
+      return os << "kOk";
+    case DeserializeError::kMessageTooShort:
+      return os << "kMessageTooShort";
+    case DeserializeError::kInvalidVersion:
+      return os << "kInvalidVersion";
+    case DeserializeError::kInvalidTokenLength:
+      return os << "kInvalidTokenLength";
+    case DeserializeError::kInvalidOption:
+      return os << "kInvalidOption";
   }
   return os << "DeserializeError(" << static_cast<int>(e) << ")";
 }
@@ -27,7 +32,8 @@ auto MakeRaw(Bytes... bs) {
   return std::array{static_cast<std::byte>(bs)...};
 }
 
-// ── Fixed header ──────────────────────────────────────────────────────────────
+// ── Fixed header
+// ──────────────────────────────────────────────────────────────
 
 TEST(PduDeserialize, TooShortReturnsError) {
   auto raw = MakeRaw(0x40, 0x01, 0x00);
@@ -56,7 +62,8 @@ TEST(PduDeserialize, TokenLongerThanMessageReturnsError) {
   EXPECT_EQ(Deserialize(raw, msg), DeserializeError::kMessageTooShort);
 }
 
-// ── Message types ─────────────────────────────────────────────────────────────
+// ── Message types
+// ─────────────────────────────────────────────────────────────
 
 // Byte 0 layout: [01 TT 0000]  — Ver=1, TKL=0
 // CON=0x40, NON=0x50, ACK=0x60, RST=0x70
@@ -65,8 +72,8 @@ TEST(PduDeserialize, ParsesCON) {
   auto raw = MakeRaw(0x40, 0x01, 0x12, 0x34);
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
-  EXPECT_EQ(msg.type,       MessageType::kCon);
-  EXPECT_EQ(msg.code,       codes::kGet);
+  EXPECT_EQ(msg.type, MessageType::kCon);
+  EXPECT_EQ(msg.code, codes::kGet);
   EXPECT_EQ(msg.message_id, 0x1234u);
   EXPECT_EQ(msg.token.length, 0u);
   EXPECT_TRUE(msg.options.empty());
@@ -77,8 +84,8 @@ TEST(PduDeserialize, ParsesNON) {
   auto raw = MakeRaw(0x50, 0x02, 0xAB, 0xCD);
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
-  EXPECT_EQ(msg.type,       MessageType::kNon);
-  EXPECT_EQ(msg.code,       codes::kPost);
+  EXPECT_EQ(msg.type, MessageType::kNon);
+  EXPECT_EQ(msg.code, codes::kPost);
   EXPECT_EQ(msg.message_id, 0xABCDu);
 }
 
@@ -99,12 +106,12 @@ TEST(PduDeserialize, ParsesRST) {
   EXPECT_EQ(msg.code, codes::kEmpty);
 }
 
-// ── Token ─────────────────────────────────────────────────────────────────────
+// ── Token
+// ─────────────────────────────────────────────────────────────────────
 
 TEST(PduDeserialize, ParsesToken) {
   // TKL = 4, token bytes = {0x01, 0x02, 0x03, 0x04}
-  auto raw = MakeRaw(0x44, 0x01, 0x00, 0x01,
-                     0x01, 0x02, 0x03, 0x04);
+  auto raw = MakeRaw(0x44, 0x01, 0x00, 0x01, 0x01, 0x02, 0x03, 0x04);
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
   EXPECT_EQ(msg.token.length, 4u);
@@ -112,13 +119,12 @@ TEST(PduDeserialize, ParsesToken) {
   EXPECT_EQ(msg.token.bytes[3], std::byte{0x04});
 }
 
-// ── Payload ───────────────────────────────────────────────────────────────────
+// ── Payload
+// ───────────────────────────────────────────────────────────────────
 
 TEST(PduDeserialize, ParsesPayloadAfterMarker) {
   // TKL=0, Code=2.05 Content, MID=0x0001, payload marker 0xFF, payload "hi"
-  auto raw = MakeRaw(0x60, 0x45, 0x00, 0x01,
-                     0xFF,
-                     0x68, 0x69);  // 'h', 'i'
+  auto raw = MakeRaw(0x60, 0x45, 0x00, 0x01, 0xFF, 0x68, 0x69);  // 'h', 'i'
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
   EXPECT_TRUE(msg.options.empty());
@@ -134,12 +140,12 @@ TEST(PduDeserialize, NoPayloadMarkerLeavesPayloadEmpty) {
   EXPECT_TRUE(msg.payload.empty());
 }
 
-// ── Options — format: string ──────────────────────────────────────────────────
+// ── Options — format: string
+// ──────────────────────────────────────────────────
 
 // Uri-Path (11): delta=11, length=4, value="test" → header 0xB4
 TEST(PduDeserialize, ParsesStringOption) {
-  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01,
-                     0xB4, 't', 'e', 's', 't');
+  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01, 0xB4, 't', 'e', 's', 't');
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
@@ -153,9 +159,7 @@ TEST(PduDeserialize, ParsesStringOption) {
 // Uri-Path (11) delta=11 → "a", Uri-Query (15) delta=4 → "b"
 // Headers: 0xB1 'a', 0x41 'b'
 TEST(PduDeserialize, ParsesMultipleOptionsWithDeltaEncoding) {
-  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01,
-                     0xB1, 'a',
-                     0x41, 'b');
+  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01, 0xB1, 'a', 0x41, 'b');
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
@@ -169,13 +173,13 @@ TEST(PduDeserialize, ParsesMultipleOptionsWithDeltaEncoding) {
   EXPECT_EQ(it, msg.options.end());
 }
 
-// ── Options — format: uint ────────────────────────────────────────────────────
+// ── Options — format: uint
+// ────────────────────────────────────────────────────
 
 // Content-Format (12): delta=12, length=2, value=50 (application/json)
 // Header 0xC2 = [1100 | 0010]
 TEST(PduDeserialize, ParsesUintOption) {
-  auto raw = MakeRaw(0x60, 0x45, 0x00, 0x01,
-                     0xC2, 0x00, 0x32);
+  auto raw = MakeRaw(0x60, 0x45, 0x00, 0x01, 0xC2, 0x00, 0x32);
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
@@ -185,12 +189,12 @@ TEST(PduDeserialize, ParsesUintOption) {
 }
 
 // Max-Age (14) with a 4-byte value 3600 = 0x00000E10.
-// delta=14 ≥ 13, so encoded as: delta_nibble=13, ext_byte=1 (13+1=14), length=4.
-// Header: 0xD4 [1101|0100], ext_delta=0x01, value={0x00,0x00,0x0E,0x10}
+// delta=14 ≥ 13, so encoded as: delta_nibble=13, ext_byte=1 (13+1=14),
+// length=4. Header: 0xD4 [1101|0100], ext_delta=0x01,
+// value={0x00,0x00,0x0E,0x10}
 TEST(PduDeserialize, ParsesUintMultiByteValue) {
-  auto raw = MakeRaw(0x60, 0x45, 0x00, 0x01,
-                     0xD4, 0x01,
-                     0x00, 0x00, 0x0E, 0x10);
+  auto raw =
+      MakeRaw(0x60, 0x45, 0x00, 0x01, 0xD4, 0x01, 0x00, 0x00, 0x0E, 0x10);
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
@@ -202,20 +206,19 @@ TEST(PduDeserialize, ParsesUintMultiByteValue) {
 // Content-Format (12) zero-length → uint value 0
 // Header 0xC0 = [1100 | 0000]
 TEST(PduDeserialize, ParsesUintZeroLength) {
-  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01,
-                     0xC0);
+  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01, 0xC0);
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
   EXPECT_EQ(std::get<uint32_t>(msg.options.begin()->value), 0u);
 }
 
-// ── Options — format: empty ───────────────────────────────────────────────────
+// ── Options — format: empty
+// ───────────────────────────────────────────────────
 
 // If-None-Match (5): delta=5, length=0 → header 0x50
 TEST(PduDeserialize, ParsesEmptyOption) {
-  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01,
-                     0x50);
+  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01, 0x50);
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
@@ -224,13 +227,13 @@ TEST(PduDeserialize, ParsesEmptyOption) {
   EXPECT_TRUE(std::holds_alternative<std::monostate>(it->value));
 }
 
-// ── Options — format: opaque ──────────────────────────────────────────────────
+// ── Options — format: opaque
+// ──────────────────────────────────────────────────
 
 // ETag (4): delta=4, length=4, value={0xDE, 0xAD, 0xBE, 0xEF}
 // Header 0x44 = [0100 | 0100]
 TEST(PduDeserialize, ParsesOpaqueOption) {
-  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01,
-                     0x44, 0xDE, 0xAD, 0xBE, 0xEF);
+  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01, 0x44, 0xDE, 0xAD, 0xBE, 0xEF);
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
@@ -242,14 +245,14 @@ TEST(PduDeserialize, ParsesOpaqueOption) {
   EXPECT_EQ(val[3], std::byte{0xEF});
 }
 
-// ── Options — extended encoding ───────────────────────────────────────────────
+// ── Options — extended encoding
+// ───────────────────────────────────────────────
 
 // Extended delta-13 encoding: delta_nibble=13, ext_byte=0 → option number 13
 // Option 13 is unknown → kOpaque, empty value
 // Header: 0xD0 [1101 | 0000], ext_delta=0x00
 TEST(PduDeserialize, ParsesOptionExtendedDelta13) {
-  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01,
-                     0xD0, 0x00);
+  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01, 0xD0, 0x00);
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
@@ -259,14 +262,12 @@ TEST(PduDeserialize, ParsesOptionExtendedDelta13) {
   EXPECT_TRUE(std::get<std::span<const std::byte>>(it->value).empty());
 }
 
-// ── Options + payload ─────────────────────────────────────────────────────────
+// ── Options + payload
+// ─────────────────────────────────────────────────────────
 
 TEST(PduDeserialize, OptionsAndPayloadTogether) {
   // Uri-Path (11) "r", payload marker, payload {0xDE, 0xAD}
-  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01,
-                     0xB1, 'r',
-                     0xFF,
-                     0xDE, 0xAD);
+  auto raw = MakeRaw(0x40, 0x01, 0x00, 0x01, 0xB1, 'r', 0xFF, 0xDE, 0xAD);
   Message msg{};
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
@@ -289,15 +290,16 @@ TEST(PduDeserialize, InvalidOptionNibble15ReturnsError) {
   EXPECT_EQ(Deserialize(raw, msg), DeserializeError::kInvalidOption);
 }
 
-// ── GetOptionFormat ───────────────────────────────────────────────────────────
+// ── GetOptionFormat
+// ───────────────────────────────────────────────────────────
 
 TEST(OptionFormat, KnownOptionsMapToCorrectFormat) {
-  EXPECT_EQ(GetOptionFormat(1),  OptionFormat::kOpaque);  // If-Match
-  EXPECT_EQ(GetOptionFormat(3),  OptionFormat::kString);  // Uri-Host
-  EXPECT_EQ(GetOptionFormat(4),  OptionFormat::kOpaque);  // ETag
-  EXPECT_EQ(GetOptionFormat(5),  OptionFormat::kEmpty);   // If-None-Match
-  EXPECT_EQ(GetOptionFormat(7),  OptionFormat::kUint);    // Uri-Port
-  EXPECT_EQ(GetOptionFormat(8),  OptionFormat::kString);  // Location-Path
+  EXPECT_EQ(GetOptionFormat(1), OptionFormat::kOpaque);   // If-Match
+  EXPECT_EQ(GetOptionFormat(3), OptionFormat::kString);   // Uri-Host
+  EXPECT_EQ(GetOptionFormat(4), OptionFormat::kOpaque);   // ETag
+  EXPECT_EQ(GetOptionFormat(5), OptionFormat::kEmpty);    // If-None-Match
+  EXPECT_EQ(GetOptionFormat(7), OptionFormat::kUint);     // Uri-Port
+  EXPECT_EQ(GetOptionFormat(8), OptionFormat::kString);   // Location-Path
   EXPECT_EQ(GetOptionFormat(11), OptionFormat::kString);  // Uri-Path
   EXPECT_EQ(GetOptionFormat(12), OptionFormat::kUint);    // Content-Format
   EXPECT_EQ(GetOptionFormat(14), OptionFormat::kUint);    // Max-Age
@@ -313,12 +315,13 @@ TEST(OptionFormat, UnknownOptionFallsBackToOpaque) {
   EXPECT_EQ(GetOptionFormat(9999), OptionFormat::kOpaque);
 }
 
-// ── Code helpers ──────────────────────────────────────────────────────────────
+// ── Code helpers
+// ──────────────────────────────────────────────────────────────
 
 TEST(Code, ClassAndDetailBits) {
-  EXPECT_EQ(codes::kContent.ClassBits(),  2u);
+  EXPECT_EQ(codes::kContent.ClassBits(), 2u);
   EXPECT_EQ(codes::kContent.DetailBits(), 5u);
-  EXPECT_EQ(codes::kNotFound.ClassBits(),  4u);
+  EXPECT_EQ(codes::kNotFound.ClassBits(), 4u);
   EXPECT_EQ(codes::kNotFound.DetailBits(), 4u);
 }
 
@@ -327,7 +330,8 @@ TEST(Code, EqualityIsValueBased) {
   EXPECT_NE(codes::kGet, codes::kPost);
 }
 
-// ── Token equality ────────────────────────────────────────────────────────────
+// ── Token equality
+// ────────────────────────────────────────────────────────────
 
 TEST(Token, EqualityComparesOnlyUsedBytes) {
   Token a{}, b{};
@@ -345,8 +349,11 @@ TEST(Token, EqualityComparesOnlyUsedBytes) {
 
 TEST(Token, DifferentLengthsAreNotEqual) {
   Token a{}, b{};
-  a.length = 1; a.bytes[0] = std::byte{0x01};
-  b.length = 2; b.bytes[0] = std::byte{0x01}; b.bytes[1] = std::byte{0x00};
+  a.length = 1;
+  a.bytes[0] = std::byte{0x01};
+  b.length = 2;
+  b.bytes[0] = std::byte{0x01};
+  b.bytes[1] = std::byte{0x00};
   EXPECT_NE(a, b);
 }
 

@@ -19,38 +19,51 @@ enum class OptionFormat : uint8_t { kEmpty, kUint, kString, kOpaque };
 //   span<const byte>    — opaque  (e.g. ETag, If-Match)
 //
 // string_view and span are non-owning; lifetime is tied to the datagram buffer.
-using OptionValue = std::variant<
-    std::monostate,
-    uint32_t,
-    std::string_view,
-    std::span<const std::byte>
->;
+using OptionValue = std::variant<std::monostate, uint32_t, std::string_view,
+                                 std::span<const std::byte> >;
 
 struct OptionView {
-  uint16_t    number{0};
+  uint16_t number{0};
   OptionValue value{};
 };
 
 // Returns the wire format for a known RFC 7252 option number (§5.10).
-// Unknown numbers fall back to kOpaque — safe for both critical and elective options.
+// Unknown numbers fall back to kOpaque — safe for both critical and elective
+// options.
 inline OptionFormat GetOptionFormat(uint16_t number) noexcept {
   switch (number) {
-    case  1: return OptionFormat::kOpaque;  // If-Match
-    case  3: return OptionFormat::kString;  // Uri-Host
-    case  4: return OptionFormat::kOpaque;  // ETag
-    case  5: return OptionFormat::kEmpty;   // If-None-Match
-    case  7: return OptionFormat::kUint;    // Uri-Port
-    case  8: return OptionFormat::kString;  // Location-Path
-    case 11: return OptionFormat::kString;  // Uri-Path
-    case 12: return OptionFormat::kUint;    // Content-Format
-    case 14: return OptionFormat::kUint;    // Max-Age
-    case 15: return OptionFormat::kString;  // Uri-Query
-    case 17: return OptionFormat::kUint;    // Accept
-    case 20: return OptionFormat::kString;  // Location-Query
-    case 35: return OptionFormat::kString;  // Proxy-Uri
-    case 39: return OptionFormat::kString;  // Proxy-Scheme
-    case 60: return OptionFormat::kUint;    // Size1
-    default: return OptionFormat::kOpaque;
+    case 1:
+      return OptionFormat::kOpaque;  // If-Match
+    case 3:
+      return OptionFormat::kString;  // Uri-Host
+    case 4:
+      return OptionFormat::kOpaque;  // ETag
+    case 5:
+      return OptionFormat::kEmpty;  // If-None-Match
+    case 7:
+      return OptionFormat::kUint;  // Uri-Port
+    case 8:
+      return OptionFormat::kString;  // Location-Path
+    case 11:
+      return OptionFormat::kString;  // Uri-Path
+    case 12:
+      return OptionFormat::kUint;  // Content-Format
+    case 14:
+      return OptionFormat::kUint;  // Max-Age
+    case 15:
+      return OptionFormat::kString;  // Uri-Query
+    case 17:
+      return OptionFormat::kUint;  // Accept
+    case 20:
+      return OptionFormat::kString;  // Location-Query
+    case 35:
+      return OptionFormat::kString;  // Proxy-Uri
+    case 39:
+      return OptionFormat::kString;  // Proxy-Scheme
+    case 60:
+      return OptionFormat::kUint;  // Size1
+    default:
+      return OptionFormat::kOpaque;
   }
 }
 
@@ -68,7 +81,8 @@ inline uint32_t DecodeUint(std::span<const std::byte> bytes) noexcept {
 
 // Decode `delta_nibble` / `length_nibble` extended encoding per RFC 7252 §3.1.
 // `p` is advanced past the extension bytes on return.
-inline uint16_t DecodeOptionField(uint8_t nibble, const std::byte*& p) noexcept {
+inline uint16_t DecodeOptionField(uint8_t nibble,
+                                  const std::byte*& p) noexcept {
   if (nibble == 13u) {
     return static_cast<uint8_t>(*p++) + 13u;
   }
@@ -80,16 +94,17 @@ inline uint16_t DecodeOptionField(uint8_t nibble, const std::byte*& p) noexcept 
   return nibble;
 }
 
-// Forward iterator that decodes CoAP options on demand from validated wire bytes.
-// The span passed to OptionsView MUST contain only the options section (no
-// payload marker, no payload) and must have been validated by Deserialize().
+// Forward iterator that decodes CoAP options on demand from validated wire
+// bytes. The span passed to OptionsView MUST contain only the options section
+// (no payload marker, no payload) and must have been validated by
+// Deserialize().
 class OptionsIterator {
  public:
   using iterator_category = std::forward_iterator_tag;
-  using value_type        = OptionView;
-  using difference_type   = std::ptrdiff_t;
-  using reference         = const OptionView&;
-  using pointer           = const OptionView*;
+  using value_type = OptionView;
+  using difference_type = std::ptrdiff_t;
+  using reference = const OptionView&;
+  using pointer = const OptionView*;
 
   OptionsIterator() noexcept = default;
 
@@ -98,8 +113,8 @@ class OptionsIterator {
     if (cursor_ != end_) DeserializeCurrent();
   }
 
-  reference operator*()  const noexcept { return current_; }
-  pointer   operator->() const noexcept { return &current_; }
+  reference operator*() const noexcept { return current_; }
+  pointer operator->() const noexcept { return &current_; }
 
   OptionsIterator& operator++() noexcept {
     accumulated_number_ = current_.number;
@@ -132,11 +147,11 @@ inline void OptionsIterator::DeserializeCurrent() noexcept {
   const std::byte* p = cursor_;
   const auto header = static_cast<uint8_t>(*p++);
 
-  const uint16_t delta  = DecodeOptionField((header >> 4u) & 0x0Fu, p);
+  const uint16_t delta = DecodeOptionField((header >> 4u) & 0x0Fu, p);
   const uint16_t length = DecodeOptionField(header & 0x0Fu, p);
 
   current_.number = static_cast<uint16_t>(accumulated_number_ + delta);
-  next_cursor_    = p + length;
+  next_cursor_ = p + length;
 
   const std::span<const std::byte> raw{p, length};
 

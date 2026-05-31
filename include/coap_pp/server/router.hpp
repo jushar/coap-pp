@@ -9,12 +9,13 @@ namespace coap_pp {
 
 // A single URI-path + method handler entry within a Router.
 // path is relative to the Router's base_path (e.g. "/sensors" for base "/api").
-// The server automatically returns 4.05 Method Not Allowed when the path matches
-// but the request method does not, so handlers need not check req.method themselves.
+// The server automatically returns 4.05 Method Not Allowed when the path
+// matches but the request method does not, so handlers need not check
+// req.method themselves.
 struct Route {
-  Code             method;
+  Code method;
   std::string_view path;
-  RequestHandler   handler;
+  RequestHandler handler;
 };
 
 // Groups a set of routes under a common base path.
@@ -31,11 +32,11 @@ class Router {
   Router(std::string_view base_path, std::span<const Route> routes) noexcept
       : base_path_{base_path}, routes_{routes} {}
 
-  std::string_view       GetBasePath() const noexcept { return base_path_; }
-  std::span<const Route> GetRoutes()   const noexcept { return routes_; }
+  std::string_view GetBasePath() const noexcept { return base_path_; }
+  std::span<const Route> GetRoutes() const noexcept { return routes_; }
 
  private:
-  std::string_view       base_path_;
+  std::string_view base_path_;
   std::span<const Route> routes_;
 };
 

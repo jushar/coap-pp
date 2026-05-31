@@ -29,25 +29,25 @@ class PosixUdpTransport : public TransportIF {
   void Stop() noexcept override;
 
   [[nodiscard]] TransportError Send(
-      const Endpoint&            destination,
+      const Endpoint& destination,
       std::span<const std::byte> data) noexcept override;
 
-  void     SetReceiver(TransportReceiverIF& receiver) noexcept override;
+  void SetReceiver(TransportReceiverIF& receiver) noexcept override;
   Endpoint LocalEndpoint() const noexcept override;
 
   // Build an Endpoint from a dotted-decimal IPv4 address string and port.
   // Returns a zero-filled Endpoint if the address is invalid.
-  [[nodiscard]] static Endpoint MakeEndpoint(const char*  ip,
-                                              uint16_t     port) noexcept;
+  [[nodiscard]] static Endpoint MakeEndpoint(const char* ip,
+                                             uint16_t port) noexcept;
 
  private:
   void ReceiveLoop() noexcept;
 
-  uint16_t             port_;
-  int                  fd_{-1};
+  uint16_t port_;
+  int fd_{-1};
   TransportReceiverIF* receiver_{nullptr};
-  std::atomic<bool>    running_{false};
-  std::thread          recv_thread_;
+  std::atomic<bool> running_{false};
+  std::thread recv_thread_;
 };
 
 }  // namespace coap_pp

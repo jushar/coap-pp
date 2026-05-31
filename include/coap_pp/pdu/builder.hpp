@@ -19,10 +19,22 @@ namespace coap_pp {
 template <std::size_t MaxOptions>
 class MessageBuilder {
  public:
-  MessageBuilder& SetType(MessageType t) noexcept       { type_       = t;   return *this; }
-  MessageBuilder& SetCode(Code c) noexcept              { code_       = c;   return *this; }
-  MessageBuilder& SetMessageId(uint16_t mid) noexcept   { message_id_ = mid; return *this; }
-  MessageBuilder& SetToken(const Token& tk) noexcept    { token_      = tk;  return *this; }
+  MessageBuilder& SetType(MessageType t) noexcept {
+    type_ = t;
+    return *this;
+  }
+  MessageBuilder& SetCode(Code c) noexcept {
+    code_ = c;
+    return *this;
+  }
+  MessageBuilder& SetMessageId(uint16_t mid) noexcept {
+    message_id_ = mid;
+    return *this;
+  }
+  MessageBuilder& SetToken(const Token& tk) noexcept {
+    token_ = tk;
+    return *this;
+  }
 
   MessageBuilder& AddOption(uint16_t number, std::monostate) noexcept {
     return Push(OptionView{number, std::monostate{}});
@@ -34,7 +46,7 @@ class MessageBuilder {
     return Push(OptionView{number, value});
   }
   MessageBuilder& AddOption(uint16_t number,
-                             std::span<const std::byte> value) noexcept {
+                            std::span<const std::byte> value) noexcept {
     return Push(OptionView{number, value});
   }
 
@@ -66,9 +78,9 @@ class MessageBuilder {
   }
 
   MessageType type_{MessageType::kCon};
-  Code        code_{};
-  uint16_t    message_id_{0};
-  Token       token_{};
+  Code code_{};
+  uint16_t message_id_{0};
+  Token token_{};
   StaticVector<OptionView, MaxOptions> options_{};
   std::span<const std::byte> payload_{};
 };

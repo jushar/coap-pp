@@ -9,8 +9,8 @@
 namespace coap_pp {
 
 // Maximum CoAP datagram size per RFC 7252 §4.6.
-// Derived from IPv6 minimum MTU (1280) minus IPv6 header (40) and UDP header (8).
-// Implementations MUST NOT send messages larger than this without PMTUD.
+// Derived from IPv6 minimum MTU (1280) minus IPv6 header (40) and UDP header
+// (8). Implementations MUST NOT send messages larger than this without PMTUD.
 inline constexpr std::size_t kMaxMessageSize = 1232;
 
 enum class TransportError : uint8_t {
@@ -29,9 +29,9 @@ class TransportReceiverIF {
                          std::span<const std::byte> data) noexcept = 0;
 };
 
-// Abstracts a connectionless, unreliable datagram transport (e.g. UDP, DTLS/UDP,
-// serial framing). Agnostic of the underlying addressing scheme — all endpoint
-// information is carried as opaque Endpoint values.
+// Abstracts a connectionless, unreliable datagram transport (e.g. UDP,
+// DTLS/UDP, serial framing). Agnostic of the underlying addressing scheme — all
+// endpoint information is carried as opaque Endpoint values.
 class TransportIF {
  public:
   virtual ~TransportIF() = default;

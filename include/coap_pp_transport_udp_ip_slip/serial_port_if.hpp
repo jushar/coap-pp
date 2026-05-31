@@ -12,10 +12,10 @@ class SerialPortIF {
  public:
   virtual ~SerialPortIF() = default;
 
-  SerialPortIF(const SerialPortIF&)            = delete;
+  SerialPortIF(const SerialPortIF&) = delete;
   SerialPortIF& operator=(const SerialPortIF&) = delete;
-  SerialPortIF(SerialPortIF&&)                 = delete;
-  SerialPortIF& operator=(SerialPortIF&&)      = delete;
+  SerialPortIF(SerialPortIF&&) = delete;
+  SerialPortIF& operator=(SerialPortIF&&) = delete;
 
   // Transmit all bytes synchronously. Blocks until every byte has been handed
   // to the hardware / OS send buffer.
