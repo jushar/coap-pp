@@ -30,21 +30,26 @@ target_compile_features(coap-pp-transport-udp-ip-slip PUBLIC cxx_std_20)
 
 # POSIX transport + examples (Linux / macOS only)
 if(UNIX)
-    add_library(coap-pp-transport-posix STATIC
-        src/coap_pp_transport_posix/udp_transport.cpp
-    )
-    target_link_libraries(coap-pp-transport-posix PUBLIC coap-pp Threads::Threads)
-    target_compile_features(coap-pp-transport-posix PUBLIC cxx_std_20)
+    option(COAP_PP_BUILD_POSIX_TRANSPORT "Build the POSIX UDP transport" ON)
 
-    option(BUILD_EXAMPLES "Build example programs" ON)
-    if(BUILD_EXAMPLES)
-        add_subdirectory(examples)
+    if(COAP_PP_BUILD_POSIX_TRANSPORT)
+        add_library(coap-pp-transport-posix STATIC
+            src/coap_pp_transport_posix/udp_transport.cpp
+        )
+        target_link_libraries(coap-pp-transport-posix PUBLIC coap-pp Threads::Threads)
+        target_compile_features(coap-pp-transport-posix PUBLIC cxx_std_20)
+
+        option(COAP_PP_BUILD_EXAMPLES "Build example programs" ON)
+        if(COAP_PP_BUILD_EXAMPLES)
+            add_subdirectory(examples)
+        endif()
     endif()
 endif()
 
 # Tests
-include(CTest)
-if(BUILD_TESTING)
+option(COAP_PP_BUILD_TESTS "Build coap-pp tests" ON)
+if(COAP_PP_BUILD_TESTS)
+    include(CTest)
     include(FetchContent)
     FetchContent_Declare(
         googletest
