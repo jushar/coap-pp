@@ -31,7 +31,7 @@ struct OptionView {
 // Returns the wire format for a known RFC 7252 option number (§5.10).
 // Unknown numbers fall back to kOpaque — safe for both critical and elective
 // options.
-inline OptionFormat GetOptionFormat(uint16_t number) noexcept {
+inline OptionFormat GetOptionFormat(uint16_t number) {
   switch (number) {
     case 1:
       return OptionFormat::kOpaque;  // If-Match
@@ -70,7 +70,7 @@ inline OptionFormat GetOptionFormat(uint16_t number) noexcept {
 
 // Decode a CoAP variable-length unsigned integer (RFC 7252 §3.2).
 // Big-endian, leading zeros omitted; empty span represents zero.
-inline uint32_t DecodeUint(std::span<const std::byte> bytes) noexcept {
+inline uint32_t DecodeUint(std::span<const std::byte> bytes) {
   uint32_t result = 0;
   for (auto b : bytes) {
     result = (result << 8u) | static_cast<uint8_t>(b);
@@ -82,8 +82,7 @@ inline uint32_t DecodeUint(std::span<const std::byte> bytes) noexcept {
 
 // Decode `delta_nibble` / `length_nibble` extended encoding per RFC 7252 §3.1.
 // `p` is advanced past the extension bytes on return.
-inline uint16_t DecodeOptionField(uint8_t nibble,
-                                  const std::byte*& p) noexcept {
+inline uint16_t DecodeOptionField(uint8_t nibble, const std::byte*& p) {
   if (nibble == 13u) {
     return static_cast<uint8_t>(*p++) + 13u;
   }
@@ -107,35 +106,35 @@ class OptionsIterator {
   using reference = const OptionView&;
   using pointer = const OptionView*;
 
-  OptionsIterator() noexcept = default;
+  OptionsIterator() = default;
 
-  OptionsIterator(const std::byte* cursor, const std::byte* end) noexcept
+  OptionsIterator(const std::byte* cursor, const std::byte* end)
       : cursor_(cursor), end_(end) {
     if (cursor_ != end_) DeserializeCurrent();
   }
 
-  reference operator*() const noexcept { return current_; }
-  pointer operator->() const noexcept { return &current_; }
+  reference operator*() const { return current_; }
+  pointer operator->() const { return &current_; }
 
-  OptionsIterator& operator++() noexcept {
+  OptionsIterator& operator++() {
     accumulated_number_ = current_.number;
     cursor_ = next_cursor_;
     if (cursor_ != end_) DeserializeCurrent();
     return *this;
   }
 
-  OptionsIterator operator++(int) noexcept {
+  OptionsIterator operator++(int) {
     auto copy = *this;
     ++(*this);
     return copy;
   }
 
-  bool operator==(const OptionsIterator& other) const noexcept {
+  bool operator==(const OptionsIterator& other) const {
     return cursor_ == other.cursor_;
   }
 
  private:
-  void DeserializeCurrent() noexcept;
+  void DeserializeCurrent();
 
   const std::byte* cursor_{nullptr};
   const std::byte* end_{nullptr};
@@ -144,7 +143,7 @@ class OptionsIterator {
   OptionView current_{};
 };
 
-inline void OptionsIterator::DeserializeCurrent() noexcept {
+inline void OptionsIterator::DeserializeCurrent() {
   const std::byte* p = cursor_;
   const auto header = static_cast<uint8_t>(*p++);
 
@@ -179,20 +178,20 @@ inline void OptionsIterator::DeserializeCurrent() noexcept {
 // Non-owning, iterable view over the options section of a CoAP datagram.
 class OptionsView {
  public:
-  OptionsView() noexcept = default;
-  explicit OptionsView(std::span<const std::byte> raw) noexcept : raw_(raw) {}
+  OptionsView() = default;
+  explicit OptionsView(std::span<const std::byte> raw) : raw_(raw) {}
 
-  [[nodiscard]] OptionsIterator begin() const noexcept {
+  [[nodiscard]] OptionsIterator begin() const {
     return OptionsIterator{raw_.data(), raw_.data() + raw_.size()};
   }
 
-  [[nodiscard]] OptionsIterator end() const noexcept {
+  [[nodiscard]] OptionsIterator end() const {
     const auto* e = raw_.data() + raw_.size();
     return OptionsIterator{e, e};
   }
 
-  [[nodiscard]] bool empty() const noexcept { return raw_.empty(); }
-  [[nodiscard]] std::span<const std::byte> raw() const noexcept { return raw_; }
+  [[nodiscard]] bool empty() const { return raw_.empty(); }
+  [[nodiscard]] std::span<const std::byte> raw() const { return raw_; }
 
  private:
   std::span<const std::byte> raw_{};

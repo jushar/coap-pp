@@ -32,7 +32,7 @@ enum class SerializeError : uint8_t {
 // success.
 [[nodiscard]] SerializeError Serialize(const OutgoingMessage& msg,
                                        std::span<std::byte> out,
-                                       std::size_t& written) noexcept;
+                                       std::size_t& written);
 
 }  // namespace coap_pp
 

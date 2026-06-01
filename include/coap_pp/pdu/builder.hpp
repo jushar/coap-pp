@@ -20,46 +20,45 @@ namespace coap_pp {
 template <std::size_t MaxOptions>
 class MessageBuilder {
  public:
-  MessageBuilder& SetType(MessageType t) noexcept {
+  MessageBuilder& SetType(MessageType t) {
     type_ = t;
     return *this;
   }
-  MessageBuilder& SetCode(Code c) noexcept {
+  MessageBuilder& SetCode(Code c) {
     code_ = c;
     return *this;
   }
-  MessageBuilder& SetMessageId(uint16_t mid) noexcept {
+  MessageBuilder& SetMessageId(uint16_t mid) {
     message_id_ = mid;
     return *this;
   }
-  MessageBuilder& SetToken(const Token& tk) noexcept {
+  MessageBuilder& SetToken(const Token& tk) {
     token_ = tk;
     return *this;
   }
 
-  MessageBuilder& AddOption(uint16_t number, std::monostate) noexcept {
+  MessageBuilder& AddOption(uint16_t number, std::monostate) {
     return Push(OptionView{number, std::monostate{}});
   }
-  MessageBuilder& AddOption(uint16_t number, uint32_t value) noexcept {
+  MessageBuilder& AddOption(uint16_t number, uint32_t value) {
     return Push(OptionView{number, value});
   }
-  MessageBuilder& AddOption(uint16_t number, std::string_view value) noexcept {
+  MessageBuilder& AddOption(uint16_t number, std::string_view value) {
     return Push(OptionView{number, value});
   }
-  MessageBuilder& AddOption(uint16_t number,
-                            std::span<const std::byte> value) noexcept {
+  MessageBuilder& AddOption(uint16_t number, std::span<const std::byte> value) {
     return Push(OptionView{number, value});
   }
 
-  MessageBuilder& SetPayload(std::span<const std::byte> data) noexcept {
+  MessageBuilder& SetPayload(std::span<const std::byte> data) {
     payload_ = data;
     return *this;
   }
 
   // Sorts options ascending by number and returns a view into internal storage.
-  [[nodiscard]] OutgoingMessage Build() noexcept {
+  [[nodiscard]] OutgoingMessage Build() {
     std::sort(options_.begin(), options_.end(),
-              [](const OptionView& a, const OptionView& b) noexcept {
+              [](const OptionView& a, const OptionView& b) {
                 return a.number < b.number;
               });
     return OutgoingMessage{
@@ -73,7 +72,7 @@ class MessageBuilder {
   }
 
  private:
-  MessageBuilder& Push(OptionView ov) noexcept {
+  MessageBuilder& Push(OptionView ov) {
     options_.push_back(ov);
     return *this;
   }

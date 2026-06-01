@@ -12,7 +12,7 @@ namespace {
 // Build the request path ("/seg1/seg2") from Uri-Path options into buf.
 // Returns the number of characters written (0 if no Uri-Path options found).
 std::size_t JoinUriPath(const OptionsView& opts, char* buf,
-                        std::size_t buf_size) noexcept {
+                        std::size_t buf_size) {
   std::size_t len = 0;
   for (const auto& opt : opts) {
     if (opt.number != 11u) continue;  // only Uri-Path
@@ -31,19 +31,17 @@ std::size_t JoinUriPath(const OptionsView& opts, char* buf,
 
 }  // namespace
 
-CoapServer::CoapServer(Messenger& messenger,
-                       std::span<Router*> routers) noexcept
+CoapServer::CoapServer(Messenger& messenger, std::span<Router*> routers)
     : messenger_{messenger}, routers_{routers} {
   messenger_.SetHandler(*this);
 }
 
-void CoapServer::AddRouter(Router& router) noexcept {
+void CoapServer::AddRouter(Router& router) {
   if (router_count_ >= routers_.size()) return;
   routers_[router_count_++] = &router;
 }
 
-void CoapServer::OnMessage(const Endpoint& sender,
-                           const Message& msg) noexcept {
+void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   // Ignore responses and pings (code class != 0, or code == 0.00).
   if (msg.code.ClassBits() != 0u || msg.code == codes::kEmpty) return;
 
@@ -98,8 +96,7 @@ void CoapServer::OnMessage(const Endpoint& sender,
   }
 }
 
-void CoapServer::SendEmptyAck(const Endpoint& to,
-                              uint16_t message_id) noexcept {
+void CoapServer::SendEmptyAck(const Endpoint& to, uint16_t message_id) {
   MessageBuilder<0> builder;
   builder.SetType(MessageType::kAck)
       .SetCode(codes::kEmpty)
@@ -109,7 +106,7 @@ void CoapServer::SendEmptyAck(const Endpoint& to,
 
 void CoapServer::SendAsyncResponse(const Endpoint& to, MessageType req_type,
                                    uint16_t req_mid, const Token& token,
-                                   const Response& resp) noexcept {
+                                   const Response& resp) {
   MessageBuilder<2> builder;
   // Originally-CON: empty ACK was already sent; deferred reply is a new CON.
   // Originally-NON: send NON with new MID.
@@ -128,7 +125,7 @@ void CoapServer::SendAsyncResponse(const Endpoint& to, MessageType req_type,
 }
 
 void CoapServer::SendResponse(const Endpoint& to, const Message& req,
-                              const Response& resp) noexcept {
+                              const Response& resp) {
   MessageBuilder<2> builder;
 
   // CON request -> piggybacked ACK (same MID); NON request -> NON (new MID).

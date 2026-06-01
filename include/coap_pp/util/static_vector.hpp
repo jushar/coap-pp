@@ -17,26 +17,26 @@ class StaticVector {
   using iterator = T*;
   using const_iterator = const T*;
 
-  [[nodiscard]] constexpr size_type size() const noexcept { return size_; }
-  [[nodiscard]] static constexpr size_type capacity() noexcept { return N; }
-  [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
-  [[nodiscard]] constexpr bool full() const noexcept { return size_ == N; }
+  [[nodiscard]] constexpr size_type size() const { return size_; }
+  [[nodiscard]] static constexpr size_type capacity() { return N; }
+  [[nodiscard]] constexpr bool empty() const { return size_ == 0; }
+  [[nodiscard]] constexpr bool full() const { return size_ == N; }
 
-  constexpr T& operator[](size_type i) noexcept { return data_[i]; }
-  constexpr const T& operator[](size_type i) const noexcept { return data_[i]; }
+  constexpr T& operator[](size_type i) { return data_[i]; }
+  constexpr const T& operator[](size_type i) const { return data_[i]; }
 
-  constexpr T* data() noexcept { return data_.data(); }
-  constexpr const T* data() const noexcept { return data_.data(); }
+  constexpr T* data() { return data_.data(); }
+  constexpr const T* data() const { return data_.data(); }
 
-  constexpr T& back() noexcept { return data_[size_ - 1]; }
-  constexpr const T& back() const noexcept { return data_[size_ - 1]; }
+  constexpr T& back() { return data_[size_ - 1]; }
+  constexpr const T& back() const { return data_[size_ - 1]; }
 
-  constexpr iterator begin() noexcept { return data_.data(); }
-  constexpr iterator end() noexcept { return data_.data() + size_; }
-  constexpr const_iterator begin() const noexcept { return data_.data(); }
-  constexpr const_iterator end() const noexcept { return data_.data() + size_; }
+  constexpr iterator begin() { return data_.data(); }
+  constexpr iterator end() { return data_.data() + size_; }
+  constexpr const_iterator begin() const { return data_.data(); }
+  constexpr const_iterator end() const { return data_.data() + size_; }
 
-  constexpr void push_back(const T& value) noexcept {
+  constexpr void push_back(const T& value) {
     if (size_ == N) {
       // TODO: Panic if full
       return;
@@ -46,7 +46,7 @@ class StaticVector {
   }
 
   template <typename... Args>
-  constexpr T& emplace_back(Args&&... args) noexcept {
+  constexpr T& emplace_back(Args&&... args) {
     if (size_ == N) {
       // TODO: Panic if full
     }
@@ -54,9 +54,9 @@ class StaticVector {
     return data_[size_++];
   }
 
-  constexpr void pop_back() noexcept { --size_; }
+  constexpr void pop_back() { --size_; }
 
-  constexpr iterator erase(iterator pos) noexcept {
+  constexpr iterator erase(iterator pos) {
     for (auto it = pos; it + 1 != end(); ++it) *it = std::move(*(it + 1));
     --size_;
     return pos;

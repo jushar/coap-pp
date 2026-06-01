@@ -29,27 +29,27 @@ class CoapServer : private MessageHandlerIF {
  public:
   // Calls messenger.SetHandler(*this) immediately.
   // routers is caller-provided storage for Router pointers.
-  CoapServer(Messenger& messenger, std::span<Router*> routers) noexcept;
+  CoapServer(Messenger& messenger, std::span<Router*> routers);
 
   // Mount a router. Silently no-ops when the routers span is full.
-  void AddRouter(Router& router) noexcept;
+  void AddRouter(Router& router);
 
  private:
   // MessageHandlerIF
-  void OnMessage(const Endpoint& sender, const Message& msg) noexcept override;
-  void OnConTimeout(uint16_t /*message_id*/) noexcept override {}
+  void OnMessage(const Endpoint& sender, const Message& msg) override;
+  void OnConTimeout(uint16_t /*message_id*/) override {}
 
   void SendResponse(const Endpoint& to, const Message& req,
-                    const Response& resp) noexcept;
+                    const Response& resp);
 
   // Called by AsyncResponse::Send() to deliver a deferred reply.
   // Originally-CON requests: reply is a new CON with a fresh MID.
   // Originally-NON requests: reply is a NON with a fresh MID.
   void SendAsyncResponse(const Endpoint& to, MessageType req_type,
                          uint16_t req_mid, const Token& token,
-                         const Response& resp) noexcept;
+                         const Response& resp);
 
-  void SendEmptyAck(const Endpoint& to, uint16_t message_id) noexcept;
+  void SendEmptyAck(const Endpoint& to, uint16_t message_id);
 
   friend class AsyncResponse;
 

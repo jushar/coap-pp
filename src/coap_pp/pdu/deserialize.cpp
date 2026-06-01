@@ -12,7 +12,7 @@ namespace {
 //   - [payload_start, raw.size()) is the payload (empty if no payload marker).
 DeserializeError ScanOptions(std::span<const std::byte> raw, std::size_t pos,
                              std::size_t& options_end,
-                             std::size_t& payload_start) noexcept {
+                             std::size_t& payload_start) {
   while (pos < raw.size()) {
     const auto byte = static_cast<uint8_t>(raw[pos]);
 
@@ -53,8 +53,7 @@ DeserializeError ScanOptions(std::span<const std::byte> raw, std::size_t pos,
 
 }  // namespace
 
-DeserializeError Deserialize(std::span<const std::byte> raw,
-                             Message& out) noexcept {
+DeserializeError Deserialize(std::span<const std::byte> raw, Message& out) {
   // Fixed header: 4 bytes minimum.
   if (raw.size() < 4u) {
     return DeserializeError::kMessageTooShort;

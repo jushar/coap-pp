@@ -10,7 +10,7 @@ namespace {
 
 // Returns the minimum number of bytes needed to represent v as a big-endian
 // uint. Returns 0 for v == 0 (RFC 7252 §3.2 zero-length encoding).
-[[nodiscard]] uint8_t UintEncodedLength(uint32_t v) noexcept {
+[[nodiscard]] uint8_t UintEncodedLength(uint32_t v) {
   if (v == 0u) return 0u;
   if (v <= 0xFFu) return 1u;
   if (v <= 0xFFFFu) return 2u;
@@ -21,7 +21,7 @@ namespace {
 }  // namespace
 
 SerializeError Serialize(const OutgoingMessage& msg, std::span<std::byte> out,
-                         std::size_t& written) noexcept {
+                         std::size_t& written) {
   std::size_t pos = 0;
 
   // Fixed header

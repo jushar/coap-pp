@@ -12,7 +12,7 @@ constexpr uint8_t kMaxRetransmit = 4u;
 }  // namespace
 
 Messenger::RetransmitState::Action Messenger::RetransmitState::Advance(
-    uint32_t delta_ms) noexcept {
+    uint32_t delta_ms) {
   elapsed_ms += delta_ms;
   if (elapsed_ms < timeout_ms) return Action::kWaiting;
 
@@ -23,24 +23,21 @@ Messenger::RetransmitState::Action Messenger::RetransmitState::Advance(
   return Action::kRetransmit;
 }
 
-void Messenger::RetransmitState::Reset(uint32_t initial_timeout_ms) noexcept {
+void Messenger::RetransmitState::Reset(uint32_t initial_timeout_ms) {
   elapsed_ms = 0u;
   timeout_ms = initial_timeout_ms;
   retransmit_count = 0u;
 }
 
-Messenger::Messenger(TransportIF& transport,
-                     MemoryPoolSpan<PendingSlot>& pool) noexcept
+Messenger::Messenger(TransportIF& transport, MemoryPoolSpan<PendingSlot>& pool)
     : transport_{transport}, pending_{pool} {
   transport_.SetReceiver(*this);
 }
 
-void Messenger::SetHandler(MessageHandlerIF& handler) noexcept {
-  handler_ = &handler;
-}
+void Messenger::SetHandler(MessageHandlerIF& handler) { handler_ = &handler; }
 
 MessengerError Messenger::Send(const Endpoint& destination,
-                               const OutgoingMessage& msg) noexcept {
+                               const OutgoingMessage& msg) {
   if (msg.type == MessageType::kCon) {
     if (pending_.full()) return MessengerError::kNoPendingSlot;
 
@@ -80,14 +77,16 @@ MessengerError Messenger::Send(const Endpoint& destination,
   return MessengerError::kOk;
 }
 
-void Messenger::Tick(uint32_t elapsed_ms) noexcept {
+void Messenger::Tick(uint32_t elapsed_ms) {
   pending_.remove_if([&](PendingSlot& slot) -> bool {
     switch (slot.retry.Advance(elapsed_ms)) {
       case RetransmitState::Action::kWaiting:
         return false;
       case RetransmitState::Action::kRetransmit:
-        transport_.Send(slot.destination, std::span<const std::byte>{
-                                              slot.buffer.data(), slot.size});
+        // TODO: Log if send fails
+        static_cast<void>(transport_.Send(
+            slot.destination,
+            std::span<const std::byte>{slot.buffer.data(), slot.size}));
         return false;
       case RetransmitState::Action::kGiveUp:
         if (handler_) handler_->OnConTimeout(slot.message_id);
@@ -98,7 +97,7 @@ void Messenger::Tick(uint32_t elapsed_ms) noexcept {
 }
 
 void Messenger::OnReceive(const Endpoint& sender,
-                          std::span<const std::byte> data) noexcept {
+                          std::span<const std::byte> data) {
   Message msg{};
   if (Deserialize(data, msg) != DeserializeError::kOk) return;
 
@@ -109,7 +108,7 @@ void Messenger::OnReceive(const Endpoint& sender,
   if (handler_) handler_->OnMessage(sender, msg);
 }
 
-void Messenger::AckPending(uint16_t message_id) noexcept {
+void Messenger::AckPending(uint16_t message_id) {
   pending_.remove_if([message_id](const PendingSlot& s) {
     return s.message_id == message_id;
   });

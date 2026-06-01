@@ -10,11 +10,11 @@
 
 namespace coap_pp {
 
-PosixUdpTransport::PosixUdpTransport(uint16_t port) noexcept : port_{port} {}
+PosixUdpTransport::PosixUdpTransport(uint16_t port) : port_{port} {}
 
-PosixUdpTransport::~PosixUdpTransport() noexcept { Stop(); }
+PosixUdpTransport::~PosixUdpTransport() { Stop(); }
 
-TransportError PosixUdpTransport::Start() noexcept {
+TransportError PosixUdpTransport::Start() {
   fd_ = ::socket(AF_INET, SOCK_DGRAM, 0);
   if (fd_ < 0) {
     return TransportError::kError;
@@ -46,7 +46,7 @@ TransportError PosixUdpTransport::Start() noexcept {
   return TransportError::kOk;
 }
 
-void PosixUdpTransport::Stop() noexcept {
+void PosixUdpTransport::Stop() {
   running_ = false;
   if (recv_thread_.joinable()) recv_thread_.join();
   if (fd_ >= 0) {
@@ -55,8 +55,8 @@ void PosixUdpTransport::Stop() noexcept {
   }
 }
 
-TransportError PosixUdpTransport::Send(
-    const Endpoint& destination, std::span<const std::byte> data) noexcept {
+TransportError PosixUdpTransport::Send(const Endpoint& destination,
+                                       std::span<const std::byte> data) {
   const auto& addr = destination.To<sockaddr_in>();
   const auto n =
       ::sendto(fd_, data.data(), data.size(), 0,
@@ -65,11 +65,11 @@ TransportError PosixUdpTransport::Send(
   return TransportError::kOk;
 }
 
-void PosixUdpTransport::SetReceiver(TransportReceiverIF& receiver) noexcept {
+void PosixUdpTransport::SetReceiver(TransportReceiverIF& receiver) {
   receiver_ = &receiver;
 }
 
-Endpoint PosixUdpTransport::LocalEndpoint() const noexcept {
+Endpoint PosixUdpTransport::LocalEndpoint() const {
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -78,8 +78,7 @@ Endpoint PosixUdpTransport::LocalEndpoint() const noexcept {
   return Endpoint::From(addr);
 }
 
-Endpoint PosixUdpTransport::MakeEndpoint(const char* ip,
-                                         uint16_t port) noexcept {
+Endpoint PosixUdpTransport::MakeEndpoint(const char* ip, uint16_t port) {
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
@@ -88,7 +87,7 @@ Endpoint PosixUdpTransport::MakeEndpoint(const char* ip,
   return Endpoint::From(addr);
 }
 
-void PosixUdpTransport::ReceiveLoop() noexcept {
+void PosixUdpTransport::ReceiveLoop() {
   std::array<std::byte, kMaxMessageSize> buf{};
 
   while (running_) {

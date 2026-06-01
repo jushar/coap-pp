@@ -34,14 +34,13 @@ struct Response {
 // Send().
 class AsyncResponse {
  public:
-  AsyncResponse() noexcept = default;  // null state; Send() is a no-op
+  AsyncResponse() = default;  // null state; Send() is a no-op
 
   // Routing context is populated by Request::MakeAsync() — not for direct use.
   AsyncResponse(CoapServer& server, const Endpoint& endpoint,
-                MessageType req_type, uint16_t req_mid,
-                const Token& token) noexcept;
+                MessageType req_type, uint16_t req_mid, const Token& token);
 
-  void Send(const Response& resp) noexcept;
+  void Send(const Response& resp);
 
  private:
   friend class CoapServer;  // so Send() can call CoapServer::SendAsyncResponse
@@ -61,13 +60,13 @@ struct Request {
   // Populated by CoapServer — not for direct construction by application code.
   Request(Code method, OptionsView options, std::span<const std::byte> payload,
           CoapServer& server, const Endpoint& sender, MessageType req_type,
-          uint16_t req_mid, const Token& token) noexcept;
+          uint16_t req_mid, const Token& token);
 
   // Creates an AsyncResponse preloaded with the routing info for this request.
   // Store the returned handle; return it (or a copy) from the handler.
   // NOTE: options and payload are non-owning views into the receive buffer —
   // copy any data you need before the handler returns.
-  AsyncResponse MakeAsync() const noexcept;
+  AsyncResponse MakeAsync() const;
 
  private:
   CoapServer* server_;

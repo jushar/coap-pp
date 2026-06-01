@@ -38,31 +38,30 @@ class UdpIpSlipTransport : public TransportIF {
   //             e.g. {192, 168, 1, 1} for 192.168.1.1.
   // local_port: UDP port number in host byte order.
   UdpIpSlipTransport(SerialPortIF& serial, std::array<uint8_t, 4> local_ip,
-                     uint16_t local_port) noexcept;
-  ~UdpIpSlipTransport() noexcept override;
+                     uint16_t local_port);
+  ~UdpIpSlipTransport() override;
 
   // Start the background receive thread.
-  [[nodiscard]] TransportError Start() noexcept override;
+  [[nodiscard]] TransportError Start() override;
 
   // Signal the receive thread to stop and join it.
-  void Stop() noexcept override;
+  void Stop() override;
 
-  [[nodiscard]] TransportError Send(
-      const Endpoint& destination,
-      std::span<const std::byte> data) noexcept override;
+  [[nodiscard]] TransportError Send(const Endpoint& destination,
+                                    std::span<const std::byte> data) override;
 
-  void SetReceiver(TransportReceiverIF& receiver) noexcept override;
-  Endpoint LocalEndpoint() const noexcept override;
+  void SetReceiver(TransportReceiverIF& receiver) override;
+  Endpoint LocalEndpoint() const override;
 
   // Build an Endpoint from IPv4 address octets (network byte order) and a UDP
   // port (host byte order).
   [[nodiscard]] static Endpoint MakeEndpoint(std::array<uint8_t, 4> ip,
-                                             uint16_t port) noexcept;
+                                             uint16_t port);
 
  private:
-  void ReceiveLoop() noexcept;
-  void SlipSendFrame(std::span<const std::byte> data) noexcept;
-  void ProcessFrame(std::span<const std::byte> frame) noexcept;
+  void ReceiveLoop();
+  void SlipSendFrame(std::span<const std::byte> data);
+  void ProcessFrame(std::span<const std::byte> frame);
 
   SerialPortIF& serial_;
   std::array<uint8_t, 4> local_ip_;

@@ -23,11 +23,11 @@ static constexpr std::size_t kMaxRecordedSends = 16;
 
 class MockTransport : public TransportIF {
  public:
-  TransportError Start() noexcept override { return TransportError::kOk; }
-  void Stop() noexcept override {}
+  TransportError Start() override { return TransportError::kOk; }
+  void Stop() override {}
 
   TransportError Send(const Endpoint& dest,
-                      std::span<const std::byte> data) noexcept override {
+                      std::span<const std::byte> data) override {
     if (!sends_.full()) {
       sends_.push_back({});
       auto& r = sends_.back();
@@ -38,8 +38,8 @@ class MockTransport : public TransportIF {
     return {};
   }
 
-  void SetReceiver(TransportReceiverIF& r) noexcept override { receiver_ = &r; }
-  Endpoint LocalEndpoint() const noexcept override { return {}; }
+  void SetReceiver(TransportReceiverIF& r) override { receiver_ = &r; }
+  Endpoint LocalEndpoint() const override { return {}; }
 
   void Inject(const Endpoint& sender, std::span<const std::byte> data) {
     if (receiver_) receiver_->OnReceive(sender, data);

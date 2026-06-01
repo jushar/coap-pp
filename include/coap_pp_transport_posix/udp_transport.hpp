@@ -20,29 +20,27 @@ namespace coap_pp {
 // only sends ACK/NON responses (never initiates CON), this is not an issue.
 class PosixUdpTransport : public TransportIF {
  public:
-  explicit PosixUdpTransport(uint16_t port) noexcept;
-  ~PosixUdpTransport() noexcept override;
+  explicit PosixUdpTransport(uint16_t port);
+  ~PosixUdpTransport() override;
 
   // Bind the socket and start the background receive thread.
-  [[nodiscard]] TransportError Start() noexcept override;
+  [[nodiscard]] TransportError Start() override;
 
   // Signal the receive thread to stop, join it, and close the socket.
-  void Stop() noexcept override;
+  void Stop() override;
 
-  [[nodiscard]] TransportError Send(
-      const Endpoint& destination,
-      std::span<const std::byte> data) noexcept override;
+  [[nodiscard]] TransportError Send(const Endpoint& destination,
+                                    std::span<const std::byte> data) override;
 
-  void SetReceiver(TransportReceiverIF& receiver) noexcept override;
-  Endpoint LocalEndpoint() const noexcept override;
+  void SetReceiver(TransportReceiverIF& receiver) override;
+  Endpoint LocalEndpoint() const override;
 
   // Build an Endpoint from a dotted-decimal IPv4 address string and port.
   // Returns a zero-filled Endpoint if the address is invalid.
-  [[nodiscard]] static Endpoint MakeEndpoint(const char* ip,
-                                             uint16_t port) noexcept;
+  [[nodiscard]] static Endpoint MakeEndpoint(const char* ip, uint16_t port);
 
  private:
-  void ReceiveLoop() noexcept;
+  void ReceiveLoop();
 
   uint16_t port_;
   int fd_{-1};

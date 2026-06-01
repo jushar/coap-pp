@@ -11,7 +11,7 @@ namespace {
 class MockTransportReceiver : public TransportReceiverIF {
  public:
   void OnReceive(const Endpoint& sender,
-                 std::span<const std::byte> data) noexcept override {
+                 std::span<const std::byte> data) override {
     last_sender = sender;
     received_bytes = data.size();
   }
@@ -24,19 +24,18 @@ class MockTransport : public TransportIF {
  public:
   explicit MockTransport(Endpoint local) : local_(local) {}
 
-  TransportError Start() noexcept override { return TransportError::kOk; }
-  void Stop() noexcept override {}
+  TransportError Start() override { return TransportError::kOk; }
+  void Stop() override {}
 
-  TransportError Send(const Endpoint&,
-                      std::span<const std::byte>) noexcept override {
+  TransportError Send(const Endpoint&, std::span<const std::byte>) override {
     return TransportError::kOk;
   }
 
-  void SetReceiver(TransportReceiverIF& receiver) noexcept override {
+  void SetReceiver(TransportReceiverIF& receiver) override {
     receiver_ = &receiver;
   }
 
-  Endpoint LocalEndpoint() const noexcept override { return local_; }
+  Endpoint LocalEndpoint() const override { return local_; }
 
  private:
   Endpoint local_;

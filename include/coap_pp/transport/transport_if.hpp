@@ -27,7 +27,7 @@ class TransportReceiverIF {
   // Called by the transport for each received datagram.
   // `data` is valid only for the duration of this call.
   virtual void OnReceive(const Endpoint& sender,
-                         std::span<const std::byte> data) noexcept = 0;
+                         std::span<const std::byte> data) = 0;
 };
 
 // Abstracts a connectionless, unreliable datagram transport (e.g. UDP,
@@ -44,23 +44,22 @@ class TransportIF {
 
   // Bind to the local endpoint and begin delivering datagrams to the registered
   // receiver. Must be called after SetReceiver().
-  [[nodiscard]] virtual TransportError Start() noexcept = 0;
+  [[nodiscard]] virtual TransportError Start() = 0;
 
   // Stop receiving and release the underlying resource (e.g. socket).
-  virtual void Stop() noexcept = 0;
+  virtual void Stop() = 0;
 
   // Transmit a datagram to `destination`. `data.size()` MUST NOT exceed
   // kMaxMessageSize. Returns TransportError::kError on failure.
   [[nodiscard]] virtual TransportError Send(
-      const Endpoint& destination,
-      std::span<const std::byte> data) noexcept = 0;
+      const Endpoint& destination, std::span<const std::byte> data) = 0;
 
   // Register the receiver that will be notified via OnReceive().
   // Must be called before Start(). Only one receiver is supported.
-  virtual void SetReceiver(TransportReceiverIF& receiver) noexcept = 0;
+  virtual void SetReceiver(TransportReceiverIF& receiver) = 0;
 
   // The local endpoint this transport is (or will be) bound to.
-  [[nodiscard]] virtual Endpoint LocalEndpoint() const noexcept = 0;
+  [[nodiscard]] virtual Endpoint LocalEndpoint() const = 0;
 
  protected:
   TransportIF() = default;

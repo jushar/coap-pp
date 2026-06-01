@@ -12,7 +12,7 @@ namespace coap_pp {
 // path).
 
 [[nodiscard]] inline bool WriteByte(std::span<std::byte> out, std::size_t& pos,
-                                    uint8_t b) noexcept {
+                                    uint8_t b) {
   if (pos >= out.size()) return false;
   out[pos++] = static_cast<std::byte>(b);
   return true;
@@ -23,8 +23,7 @@ namespace coap_pp {
 // to the 4-bit header value (0–14). Returns false if the buffer is too small.
 [[nodiscard]] inline bool EncodeExtField(uint32_t value,
                                          std::span<std::byte> out,
-                                         std::size_t& pos,
-                                         uint8_t& nibble) noexcept {
+                                         std::size_t& pos, uint8_t& nibble) {
   if (value <= 12u) {
     nibble = static_cast<uint8_t>(value);
     return true;
@@ -44,8 +43,7 @@ namespace coap_pp {
 // Returns false if the span is too short.
 [[nodiscard]] inline bool ScanExtField(uint8_t nibble,
                                        std::span<const std::byte> raw,
-                                       std::size_t& pos,
-                                       uint32_t& value) noexcept {
+                                       std::size_t& pos, uint32_t& value) {
   if (nibble <= 12u) {
     value = nibble;
     return true;

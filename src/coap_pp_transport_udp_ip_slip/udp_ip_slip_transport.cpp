@@ -17,7 +17,7 @@ constexpr std::byte kSlipEscEsc{0xDD};
 
 // One's-complement checksum over a 20-byte IPv4 header.
 // The header checksum field must be zeroed by the caller before invoking this.
-uint16_t Ipv4Checksum(const std::byte* header) noexcept {
+uint16_t Ipv4Checksum(const std::byte* header) {
   uint32_t sum = 0;
   for (std::size_t i = 0; i < kIpHeaderSize; i += 2) {
     const uint32_t hi = std::to_integer<uint8_t>(header[i]);
@@ -34,24 +34,24 @@ uint16_t Ipv4Checksum(const std::byte* header) noexcept {
 
 UdpIpSlipTransport::UdpIpSlipTransport(SerialPortIF& serial,
                                        std::array<uint8_t, 4> local_ip,
-                                       uint16_t local_port) noexcept
+                                       uint16_t local_port)
     : serial_{serial}, local_ip_{local_ip}, local_port_{local_port} {}
 
-UdpIpSlipTransport::~UdpIpSlipTransport() noexcept { Stop(); }
+UdpIpSlipTransport::~UdpIpSlipTransport() { Stop(); }
 
-TransportError UdpIpSlipTransport::Start() noexcept {
+TransportError UdpIpSlipTransport::Start() {
   running_ = true;
   recv_thread_ = std::thread{[this] { ReceiveLoop(); }};
   return TransportError::kOk;
 }
 
-void UdpIpSlipTransport::Stop() noexcept {
+void UdpIpSlipTransport::Stop() {
   running_ = false;
   if (recv_thread_.joinable()) recv_thread_.join();
 }
 
-TransportError UdpIpSlipTransport::Send(
-    const Endpoint& destination, std::span<const std::byte> data) noexcept {
+TransportError UdpIpSlipTransport::Send(const Endpoint& destination,
+                                        std::span<const std::byte> data) {
   if (data.size() > kMaxMessageSize) return TransportError::kError;
 
   const auto payload_size = data.size();
@@ -108,16 +108,16 @@ TransportError UdpIpSlipTransport::Send(
   return TransportError::kOk;
 }
 
-void UdpIpSlipTransport::SetReceiver(TransportReceiverIF& receiver) noexcept {
+void UdpIpSlipTransport::SetReceiver(TransportReceiverIF& receiver) {
   receiver_ = &receiver;
 }
 
-Endpoint UdpIpSlipTransport::LocalEndpoint() const noexcept {
+Endpoint UdpIpSlipTransport::LocalEndpoint() const {
   return MakeEndpoint(local_ip_, local_port_);
 }
 
 Endpoint UdpIpSlipTransport::MakeEndpoint(std::array<uint8_t, 4> ip,
-                                          uint16_t port) noexcept {
+                                          uint16_t port) {
   Endpoint ep{};
   std::memcpy(ep.storage.data(), ip.data(), 4);
   ep.storage[4] = std::byte{static_cast<uint8_t>(port >> 8)};
@@ -128,8 +128,7 @@ Endpoint UdpIpSlipTransport::MakeEndpoint(std::array<uint8_t, 4> ip,
 // Encode `data` as a SLIP frame and write it to the serial port.
 // Sends runs of non-special bytes in a single Write() call to minimise
 // the number of serial transactions.
-void UdpIpSlipTransport::SlipSendFrame(
-    std::span<const std::byte> data) noexcept {
+void UdpIpSlipTransport::SlipSendFrame(std::span<const std::byte> data) {
   serial_.Write(std::span{&kSlipEnd, 1});
 
   std::size_t chunk_start = 0;
@@ -157,8 +156,7 @@ void UdpIpSlipTransport::SlipSendFrame(
 
 // Validate a decoded SLIP frame as a UDP/IP datagram addressed to us and
 // dispatch its payload to the registered receiver.
-void UdpIpSlipTransport::ProcessFrame(
-    std::span<const std::byte> frame) noexcept {
+void UdpIpSlipTransport::ProcessFrame(std::span<const std::byte> frame) {
   if (frame.size() < kIpHeaderSize + kUdpHeaderSize) return;
 
   // IPv4 version and header length.
@@ -202,7 +200,7 @@ void UdpIpSlipTransport::ProcessFrame(
   }
 }
 
-void UdpIpSlipTransport::ReceiveLoop() noexcept {
+void UdpIpSlipTransport::ReceiveLoop() {
   std::array<std::byte, kIpHeaderSize + kUdpHeaderSize + kMaxMessageSize>
       frame_buf{};
   std::size_t frame_len = 0;

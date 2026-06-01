@@ -30,11 +30,11 @@ struct Route {
 //   Router router{"/api", kRoutes};
 class Router {
  public:
-  Router(std::string_view base_path, std::span<const Route> routes) noexcept
+  Router(std::string_view base_path, std::span<const Route> routes)
       : base_path_{base_path}, routes_{routes} {}
 
-  std::string_view GetBasePath() const noexcept { return base_path_; }
-  std::span<const Route> GetRoutes() const noexcept { return routes_; }
+  std::string_view GetBasePath() const { return base_path_; }
+  std::span<const Route> GetRoutes() const { return routes_; }
 
  private:
   std::string_view base_path_;

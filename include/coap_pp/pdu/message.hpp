@@ -22,14 +22,12 @@ enum class MessageType : uint8_t {
 struct Code {
   uint8_t value{0};
 
-  [[nodiscard]] constexpr uint8_t ClassBits() const noexcept {
+  [[nodiscard]] constexpr uint8_t ClassBits() const {
     return (value >> 5u) & 0x07u;
   }
-  [[nodiscard]] constexpr uint8_t DetailBits() const noexcept {
-    return value & 0x1Fu;
-  }
+  [[nodiscard]] constexpr uint8_t DetailBits() const { return value & 0x1Fu; }
 
-  [[nodiscard]] static constexpr Code Make(uint8_t c, uint8_t d) noexcept {
+  [[nodiscard]] static constexpr Code Make(uint8_t c, uint8_t d) {
     return Code{static_cast<uint8_t>((c << 5u) | (d & 0x1Fu))};
   }
 
@@ -79,11 +77,11 @@ struct Token {
   std::array<std::byte, kMaxLength> bytes{};
   uint8_t length{0};
 
-  [[nodiscard]] std::span<const std::byte> View() const noexcept {
+  [[nodiscard]] std::span<const std::byte> View() const {
     return {bytes.data(), length};
   }
 
-  bool operator==(const Token& other) const noexcept {
+  bool operator==(const Token& other) const {
     if (length != other.length) return false;
     for (uint8_t i = 0; i < length; ++i) {
       if (bytes[i] != other.bytes[i]) return false;

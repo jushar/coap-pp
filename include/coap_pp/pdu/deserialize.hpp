@@ -22,7 +22,7 @@ enum class DeserializeError : uint8_t {
 // DeserializeError::kOk; `out` then holds non-owning views into `raw`. `raw`
 // MUST remain valid for as long as `out` is used.
 [[nodiscard]] DeserializeError Deserialize(std::span<const std::byte> raw,
-                                           Message& out) noexcept;
+                                           Message& out);
 
 }  // namespace coap_pp
 

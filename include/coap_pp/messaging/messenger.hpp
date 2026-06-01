@@ -30,11 +30,10 @@ class MessageHandlerIF {
   // Called for every successfully deserialized incoming message.
   // msg is only valid for the duration of this call (views into the transport
   // buffer).
-  virtual void OnMessage(const Endpoint& sender,
-                         const Message& msg) noexcept = 0;
+  virtual void OnMessage(const Endpoint& sender, const Message& msg) = 0;
 
   // Called when a CON we sent is never acknowledged after MAX_RETRANSMIT.
-  virtual void OnConTimeout(uint16_t message_id) noexcept {}
+  virtual void OnConTimeout(uint16_t message_id) {}
 };
 
 // Ties a TransportIF to CoAP deserialize/dispatch and RFC 7252 §4.2 CON
@@ -46,7 +45,7 @@ class MessageHandlerIF {
 //   messenger.SetHandler(myHandler);
 //   // In application tick (e.g., every 100 ms):
 //   messenger.Tick(100);
-class Messenger : public TransportReceiverIF {
+class Messenger : private TransportReceiverIF {
  public:
   // RFC 7252 §4.2 retransmission timer state for a single CON slot.
   struct RetransmitState {
@@ -57,10 +56,10 @@ class Messenger : public TransportReceiverIF {
     uint8_t retransmit_count{0};
 
     // Advance the timer by delta_ms and return what action to take.
-    Action Advance(uint32_t delta_ms) noexcept;
+    Action Advance(uint32_t delta_ms);
     // Arm the state for a fresh CON transmission with the given initial
     // timeout.
-    void Reset(uint32_t initial_timeout_ms) noexcept;
+    void Reset(uint32_t initial_timeout_ms);
   };
 
   // Per-CON retransmission slot.
@@ -75,26 +74,26 @@ class Messenger : public TransportReceiverIF {
   // pool is a MemoryPoolSpan<PendingSlot> — typically a MemoryPool<PendingSlot,
   // N> that implicitly converts. The Messenger holds a reference; the pool must
   // outlive it. Registers *this as the transport's receiver immediately.
-  Messenger(TransportIF& transport, MemoryPoolSpan<PendingSlot>& pool) noexcept;
+  Messenger(TransportIF& transport, MemoryPoolSpan<PendingSlot>& pool);
 
-  void SetHandler(MessageHandlerIF& handler) noexcept;
+  void SetHandler(MessageHandlerIF& handler);
 
   // Serialize msg and send via transport.
   // For CON messages a slot is claimed from the pending FIFO for retransmission
   // tracking. Returns MessengerError::kNoPendingSlot if the pool is full.
   [[nodiscard]] MessengerError Send(const Endpoint& destination,
-                                    const OutgoingMessage& msg) noexcept;
+                                    const OutgoingMessage& msg);
 
   // Drive CON retransmission timers. Call periodically from application tick.
   // elapsed_ms is the time elapsed since the previous Tick() call.
-  void Tick(uint32_t elapsed_ms) noexcept;
-
-  // TransportReceiverIF — called by the transport on datagram arrival.
-  void OnReceive(const Endpoint& sender,
-                 std::span<const std::byte> data) noexcept override;
+  void Tick(uint32_t elapsed_ms);
 
  private:
-  void AckPending(uint16_t message_id) noexcept;
+  // TransportReceiverIF — called by the transport on datagram arrival.
+  void OnReceive(const Endpoint& sender,
+                 std::span<const std::byte> data) override;
+
+  void AckPending(uint16_t message_id);
 
   TransportIF& transport_;
   MessageHandlerIF* handler_{nullptr};

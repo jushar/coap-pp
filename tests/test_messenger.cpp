@@ -22,11 +22,11 @@ static constexpr std::size_t kMaxRecordedSends = 16;
 
 class MockTransport : public TransportIF {
  public:
-  TransportError Start() noexcept override { return TransportError::kOk; }
-  void Stop() noexcept override {}
+  TransportError Start() override { return TransportError::kOk; }
+  void Stop() override {}
 
   TransportError Send(const Endpoint& dest,
-                      std::span<const std::byte> data) noexcept override {
+                      std::span<const std::byte> data) override {
     if (sends_.full()) return {};
     sends_.push_back({});
     auto& r = sends_.back();
@@ -36,8 +36,8 @@ class MockTransport : public TransportIF {
     return {};
   }
 
-  void SetReceiver(TransportReceiverIF& r) noexcept override { receiver_ = &r; }
-  Endpoint LocalEndpoint() const noexcept override { return {}; }
+  void SetReceiver(TransportReceiverIF& r) override { receiver_ = &r; }
+  Endpoint LocalEndpoint() const override { return {}; }
 
   // Simulate receiving a datagram.
   void InjectReceive(const Endpoint& sender, std::span<const std::byte> data) {
@@ -60,7 +60,7 @@ class MockHandler : public MessageHandlerIF {
     bool valid{false};
   };
 
-  void OnMessage(const Endpoint& sender, const Message& msg) noexcept override {
+  void OnMessage(const Endpoint& sender, const Message& msg) override {
     last_.sender = sender;
     last_.type = msg.type;
     last_.message_id = msg.message_id;
@@ -68,7 +68,7 @@ class MockHandler : public MessageHandlerIF {
     ++message_count_;
   }
 
-  void OnConTimeout(uint16_t message_id) noexcept override {
+  void OnConTimeout(uint16_t message_id) override {
     last_timeout_mid_ = message_id;
     ++timeout_count_;
   }

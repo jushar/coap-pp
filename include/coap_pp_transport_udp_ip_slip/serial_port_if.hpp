@@ -20,12 +20,12 @@ class SerialPortIF {
 
   // Transmit all bytes synchronously. Blocks until every byte has been handed
   // to the hardware / OS send buffer.
-  virtual void Write(std::span<const std::byte> data) noexcept = 0;
+  virtual void Write(std::span<const std::byte> data) = 0;
 
   // Receive one byte. Returns the byte value in [0, 255], or -1 on timeout /
   // no data. Must return within a bounded time (e.g., 100 ms) so that the
   // receive thread can check for a stop signal.
-  virtual int ReadByte() noexcept = 0;
+  virtual int ReadByte() = 0;
 
  protected:
   SerialPortIF() = default;

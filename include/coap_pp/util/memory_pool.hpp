@@ -16,34 +16,34 @@ class MemoryPoolSpan {
  public:
   using size_type = std::size_t;
 
-  MemoryPoolSpan(T* data, std::size_t capacity) noexcept
+  MemoryPoolSpan(T* data, std::size_t capacity)
       : data_{data}, capacity_{capacity} {}
 
-  [[nodiscard]] bool empty() const noexcept { return count_ == 0; }
-  [[nodiscard]] bool full() const noexcept { return count_ == capacity_; }
-  [[nodiscard]] size_type size() const noexcept { return count_; }
+  [[nodiscard]] bool empty() const { return count_ == 0; }
+  [[nodiscard]] bool full() const { return count_ == capacity_; }
+  [[nodiscard]] size_type size() const { return count_; }
 
-  T& front() noexcept { return data_[0]; }
-  const T& front() const noexcept { return data_[0]; }
+  T& front() { return data_[0]; }
+  const T& front() const { return data_[0]; }
 
-  T& back() noexcept { return data_[count_ - 1]; }
-  const T& back() const noexcept { return data_[count_ - 1]; }
+  T& back() { return data_[count_ - 1]; }
+  const T& back() const { return data_[count_ - 1]; }
 
   // With no args: claims the next slot without reinitialising it (caller fills
   // all fields). With args: constructs T in-place from those arguments.
   template <typename... Args>
-  T& emplace_back(Args&&... args) noexcept {
+  T& emplace_back(Args&&... args) {
     if constexpr (sizeof...(args) > 0) {
       ::new (&data_[count_]) T(std::forward<Args>(args)...);
     }
     return data_[count_++];
   }
 
-  void pop_front() noexcept { erase_at(0); }
-  void pop_back() noexcept { --count_; }
+  void pop_front() { erase_at(0); }
+  void pop_back() { --count_; }
 
   template <typename Pred>
-  void remove_if(Pred&& pred) noexcept {
+  void remove_if(Pred&& pred) {
     std::size_t i = 0;
     while (i < count_) {
       if (pred(data_[i]))
@@ -54,7 +54,7 @@ class MemoryPoolSpan {
   }
 
  private:
-  void erase_at(std::size_t i) noexcept {
+  void erase_at(std::size_t i) {
     for (std::size_t j = i + 1; j < count_; ++j)
       data_[j - 1] = std::move(data_[j]);
     --count_;
@@ -69,14 +69,14 @@ class MemoryPoolSpan {
 template <typename T, std::size_t Capacity>
 class MemoryPool {
  public:
-  MemoryPool() noexcept : span_{storage_.data(), Capacity} {}
+  MemoryPool() : span_{storage_.data(), Capacity} {}
 
   MemoryPool(const MemoryPool&) = delete;
   MemoryPool& operator=(const MemoryPool&) = delete;
 
   // Allows passing a MemoryPool<T, N> directly where a MemoryPoolSpan<T>& is
   // expected.
-  operator MemoryPoolSpan<T>&() noexcept { return span_; }
+  operator MemoryPoolSpan<T>&() { return span_; }
 
  private:
   std::array<T, Capacity> storage_{};
