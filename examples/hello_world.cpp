@@ -1,11 +1,10 @@
 #include <atomic>
-#include <chrono>
 #include <csignal>
 #include <iostream>
 #include <thread>
 
+#include "coap_pp/log.hpp"
 #include "coap_pp/messaging/messenger.hpp"
-#include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/server/coap_server.hpp"
 #include "coap_pp/server/router.hpp"
 #include "coap_pp_transport_posix/udp_transport.hpp"
@@ -55,27 +54,26 @@ class ExampleController final {
 };
 
 int main() {
-  // ── Transport
-  // ────────────────────────────────────────────────────────────────
+  // Setup logging
+  SetLogHandler([](LogLevel level, std::string_view message) {
+    std::cout << message << std::endl;
+  });
+
+  // Create transport
   PosixUdpTransport transport{5683};
 
-  // ── Messenger
-  // ────────────────────────────────────────────────────────────────
+  // Messenger (handles transmission of messages)
   MemoryPool<Messenger::PendingSlot, 4> con_pool{};
   Messenger messenger{transport, con_pool};
 
-  // ── Server
-  // ───────────────────────────────────────────────────────────────────
+  // Server
   std::array<Router*, 4> router_storage{};
   CoapServer server{messenger, router_storage};
 
-  // ── Controllers
-  // ───────────────────────────────────────────────────────────────────
+  // REST controllers
   ExampleController example_controller{};
   server.AddRouter(example_controller.BuildRouter());
 
-  // ── Start
-  // ────────────────────────────────────────────────────────────────────
   if (transport.Start() != TransportError::kOk) {
     std::cerr << "Failed to start transport\n";
     return 1;
@@ -88,8 +86,7 @@ int main() {
   std::cout << "  GET  /other  ->  4.04 Not Found\n";
   std::cout << "Press Ctrl+C to stop.\n";
 
-  // ── Main loop
-  // ─────────────────────────────────────────────────────────────────
+  // Run main loop
   std::signal(SIGINT, [](int) { g_running = false; });
 
   while (g_running) {

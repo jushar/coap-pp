@@ -5,7 +5,8 @@
 A C++20 implementation of the CoAP protocol ([RFC 7252](https://www.rfc-editor.org/rfc/rfc7252)) targeting small embedded systems (e.g. STM32 Cortex-M) in functional-safety contexts.
 
 **Features:**
-- CoAP essentials (reliable/unreliable messages, request/response, retransmission)
+- CoAP messaging (reliable/unreliable messages, request/response, retransmission)
+- CoAP server, with semi-dynamic registration of endpoints
 - Async responses
 
 **Design goals:**
@@ -60,36 +61,42 @@ cd build && ctest --output-on-failure --parallel
 
 using namespace coap_pp;
 
-// 1. Transport
-PosixUdpTransport transport{5683};
+int main() {
+    SetLogHandler([](LogLevel level, std::string_view message) {
+    std::cout << message << std::endl;
+    });
 
-// 2. Messenger (tracks CON retransmissions; pool size = max in-flight CONs)
-MemoryPool<Messenger::PendingSlot, 4> con_pool{};
-Messenger messenger{transport, con_pool};
+    // 1. Transport
+    PosixUdpTransport transport{5683};
 
-// 3. Server
-std::array<Router*, 4> router_storage{};
-CoapServer server{messenger, router_storage};
+    // 2. Messenger (tracks CON retransmissions; pool size = max in-flight CONs)
+    MemoryPool<Messenger::PendingSlot, 4> con_pool{};
+    Messenger messenger{transport, con_pool};
 
-// 4. Route handler
-auto handle_hello = [](const Request&) -> HandlerResult {
-    static constexpr std::string_view kBody = "Hello, CoAP!";
-    return Response{codes::kContent,
-                    std::as_bytes(std::span{kBody.data(), kBody.size()}), 0u};
-};
+    // 3. Server
+    std::array<Router*, 4> router_storage{};
+    CoapServer server{messenger, router_storage};
 
-// 5. Router
-static const std::array<Route, 1> kRoutes{{{codes::kGet, "/hello", handle_hello}}};
-static Router api{"", kRoutes};
-server.AddRouter(api);
+    // 4. Route handler
+    auto handle_hello = [](const Request&) -> HandlerResult {
+        static constexpr std::string_view kBody = "Hello, CoAP!";
+        return Response{codes::kContent,
+                        std::as_bytes(std::span{kBody.data(), kBody.size()}), 0u};
+    };
 
-// 6. Start + tick loop
-transport.Start();
-while (running) {
-    std::this_thread::sleep_for(std::chrono::milliseconds{100});
-    messenger.Tick(100);
+    // 5. Router
+    static const std::array<Route, 1> kRoutes{{{codes::kGet, "/hello", handle_hello}}};
+    static Router api{"", kRoutes};
+    server.AddRouter(api);
+
+    // 6. Start + tick loop
+    transport.Start();
+    while (running) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{100});
+        messenger.Tick(100);
+    }
+    transport.Stop();
 }
-transport.Stop();
 ```
 
 See [examples/hello_world.cpp](examples/hello_world.cpp) for a complete example including async (deferred) responses.
