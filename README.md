@@ -1,0 +1,145 @@
+# coap-pp
+
+[![CI](https://github.com/jushar/coap-pp/actions/workflows/ci.yml/badge.svg)](https://github.com/jushar/coap-pp/actions/workflows/ci.yml)
+
+A C++20 implementation of the CoAP protocol ([RFC 7252](https://www.rfc-editor.org/rfc/rfc7252)) targeting small embedded systems (e.g. STM32 Cortex-M) in functional-safety contexts.
+
+**Features:**
+- CoAP essentials (reliable/unreliable messages, request/response, retransmission)
+- Async responses
+
+**Design goals:**
+- No heap allocations — all buffers are statically sized or provided via `MemoryPool`
+- Platform-agnostic core; platform-specific code lives only in transport implementations
+- C++20, Google C++ Style Guide
+
+
+## Library layout
+
+| CMake target | Description |
+|---|---|
+| `coap-pp` | Core library: PDU (de)serialization, `Messenger`, `CoapServer`, routing |
+| `coap-pp-transport-posix` | POSIX IPv4 UDP transport (Linux / macOS) |
+| `coap-pp-transport-udp-ip-slip` | UDP/IP/SLIP transport over a serial port (platform-agnostic) |
+
+## Requirements
+
+- CMake ≥ 3.30
+- A C++20 compiler (tested: GCC 14, Clang 18)
+
+## Building
+
+```sh
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+```
+
+CMake options:
+
+| Option | Default | Description |
+|---|---|---|
+| `COAP_PP_BUILD_POSIX_TRANSPORT` | `ON` (UNIX only) | Build the POSIX UDP transport |
+| `COAP_PP_BUILD_EXAMPLES` | `ON` (UNIX only) | Build example programs |
+| `COAP_PP_BUILD_TESTS` | `ON` | Build GoogleTest suite |
+| `COAP_PP_LOG_LEVEL` | `0` | Minimum compiled-in log level (0=Debug, 1=Info, 2=Warning, 3=Error) |
+
+### Running tests
+
+```sh
+cd build && ctest --output-on-failure --parallel
+```
+
+## Quick start
+
+```cpp
+#include "coap_pp/messaging/messenger.hpp"
+#include "coap_pp/pdu/builder.hpp"
+#include "coap_pp/server/coap_server.hpp"
+#include "coap_pp/server/router.hpp"
+#include "coap_pp_transport_posix/udp_transport.hpp"
+
+using namespace coap_pp;
+
+// 1. Transport
+PosixUdpTransport transport{5683};
+
+// 2. Messenger (tracks CON retransmissions; pool size = max in-flight CONs)
+MemoryPool<Messenger::PendingSlot, 4> con_pool{};
+Messenger messenger{transport, con_pool};
+
+// 3. Server
+std::array<Router*, 4> router_storage{};
+CoapServer server{messenger, router_storage};
+
+// 4. Route handler
+auto handle_hello = [](const Request&) -> HandlerResult {
+    static constexpr std::string_view kBody = "Hello, CoAP!";
+    return Response{codes::kContent,
+                    std::as_bytes(std::span{kBody.data(), kBody.size()}), 0u};
+};
+
+// 5. Router
+static const std::array<Route, 1> kRoutes{{{codes::kGet, "/hello", handle_hello}}};
+static Router api{"", kRoutes};
+server.AddRouter(api);
+
+// 6. Start + tick loop
+transport.Start();
+while (running) {
+    std::this_thread::sleep_for(std::chrono::milliseconds{100});
+    messenger.Tick(100);
+}
+transport.Stop();
+```
+
+See [examples/hello_world.cpp](examples/hello_world.cpp) for a complete example including async (deferred) responses.
+
+## Transports
+
+### POSIX UDP (`coap-pp-transport-posix`)
+
+Standard Berkeley sockets. The receive loop runs in a background thread.
+
+```cpp
+PosixUdpTransport transport{5683};          // listen on UDP port 5683
+auto ep = PosixUdpTransport::MakeEndpoint("192.168.1.10", 5683);
+```
+
+### UDP/IP/SLIP (`coap-pp-transport-udp-ip-slip`)
+
+Sends CoAP over UDP wrapped in a minimal IPv4 header, SLIP-framed over a serial port. Useful for microcontrollers connected to a host via UART.
+
+```cpp
+// Implement SerialPortIF for your platform
+MySerialPort serial{};
+UdpIpSlipTransport transport{serial, {192, 168, 1, 1}, 5683};
+auto ep = UdpIpSlipTransport::MakeEndpoint({192, 168, 1, 2}, 5683);
+```
+
+## Async responses
+
+Handlers can defer their reply — useful for slow operations. The server sends an empty ACK immediately (stopping CON retransmissions) and the handler delivers the real response later from any thread:
+
+```cpp
+HandlerResult HandleSlow(const Request& req) {
+    auto async = req.MakeAsync();
+    std::thread([a = async]() mutable {
+        std::this_thread::sleep_for(std::chrono::seconds{2});
+        a.Send(Response{codes::kContent, payload, 0u});
+    }).detach();
+    return async;
+}
+```
+
+## Integrating via CMake FetchContent
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(coap-pp
+    GIT_REPOSITORY https://github.com/jushar/coap-pp.git
+    GIT_TAG        main
+)
+FetchContent_MakeAvailable(coap-pp)
+
+target_link_libraries(my-target PRIVATE coap-pp)
+```
