@@ -9,7 +9,12 @@ target_compile_options(coap-pp-warnings INTERFACE
         -Wall -Wpedantic -Werror -Wno-array-bounds>
 )
 
+set(COAP_PP_LOG_LEVEL "0" CACHE STRING
+    "Minimum log level compiled in (0=Debug, 1=Info, 2=Warning, 3=Error)")
+set_property(CACHE COAP_PP_LOG_LEVEL PROPERTY STRINGS "0" "1" "2" "3")
+
 add_library(coap-pp STATIC
+    src/coap_pp/log.cpp
     src/coap_pp/pdu/deserialize.cpp
     src/coap_pp/pdu/serialize.cpp
     src/coap_pp/messaging/messenger.cpp
@@ -19,6 +24,7 @@ add_library(coap-pp STATIC
 
 target_compile_features(coap-pp PUBLIC cxx_std_20)
 target_link_libraries(coap-pp PRIVATE coap-pp-warnings)
+target_compile_definitions(coap-pp PUBLIC COAP_PP_LOG_LEVEL=${COAP_PP_LOG_LEVEL})
 
 target_include_directories(coap-pp
     PUBLIC

@@ -3,6 +3,8 @@
 #include <array>
 #include <cstring>
 
+#include "coap_pp/log.hpp"
+
 namespace coap_pp {
 namespace {
 
@@ -223,6 +225,7 @@ void UdpIpSlipTransport::ReceiveLoop() {
         decoded = kSlipEsc;
       } else {
         // Protocol error: discard the current frame.
+        detail::Log<LogLevel::kDebug>("SLIP framing error: bad escape byte");
         frame_len = 0;
         in_frame = false;
         frame_overflow = false;
@@ -232,6 +235,8 @@ void UdpIpSlipTransport::ReceiveLoop() {
         if (frame_len < frame_buf.size()) {
           frame_buf[frame_len++] = decoded;
         } else {
+          if (!frame_overflow)
+            detail::Log<LogLevel::kWarning>("SLIP frame too large, discarding");
           frame_overflow = true;
         }
       }
@@ -251,6 +256,8 @@ void UdpIpSlipTransport::ReceiveLoop() {
       if (frame_len < frame_buf.size()) {
         frame_buf[frame_len++] = b;
       } else {
+        if (!frame_overflow)
+          detail::Log<LogLevel::kWarning>("SLIP frame too large, discarding");
         frame_overflow = true;
       }
     }

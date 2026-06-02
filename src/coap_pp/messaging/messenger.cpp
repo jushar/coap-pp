@@ -1,5 +1,6 @@
 #include "coap_pp/messaging/messenger.hpp"
 
+#include "coap_pp/log.hpp"
 #include "coap_pp/pdu/deserialize.hpp"
 
 namespace coap_pp {
@@ -39,7 +40,11 @@ void Messenger::SetHandler(MessageHandlerIF& handler) { handler_ = &handler; }
 MessengerError Messenger::Send(const Endpoint& destination,
                                const OutgoingMessage& msg) {
   if (msg.type == MessageType::kCon) {
-    if (pending_.full()) return MessengerError::kNoPendingSlot;
+    if (pending_.full()) {
+      detail::Log<LogLevel::kWarning>("CON pool exhausted, dropping MID %u",
+                                      msg.message_id);
+      return MessengerError::kNoPendingSlot;
+    }
 
     // Claim the next slot without reinitialising — all fields are overwritten
     // below.
@@ -48,6 +53,8 @@ MessengerError Messenger::Send(const Endpoint& destination,
     std::size_t written = 0u;
     if (Serialize(msg, slot.buffer, written) != SerializeError::kOk) {
       pending_.pop_back();
+      detail::Log<LogLevel::kError>("CON serialize failed for MID %u",
+                                    msg.message_id);
       return MessengerError::kSerializeFailed;
     }
 
@@ -59,6 +66,8 @@ MessengerError Messenger::Send(const Endpoint& destination,
     if (transport_.Send(destination, std::span<const std::byte>{
                                          slot.buffer.data(),
                                          slot.size}) != TransportError::kOk) {
+      detail::Log<LogLevel::kWarning>("CON initial send failed for MID %u",
+                                      msg.message_id);
       return MessengerError::kTransportError;
     }
     return MessengerError::kOk;
@@ -67,11 +76,15 @@ MessengerError Messenger::Send(const Endpoint& destination,
   // Non-CON: serialize into tx_scratch_, send immediately.
   std::size_t written = 0u;
   if (Serialize(msg, tx_scratch_, written) != SerializeError::kOk) {
+    detail::Log<LogLevel::kError>("NON serialize failed for MID %u",
+                                  msg.message_id);
     return MessengerError::kSerializeFailed;
   }
   if (transport_.Send(destination, std::span<const std::byte>{
                                        tx_scratch_.data(),
                                        written}) != TransportError::kOk) {
+    detail::Log<LogLevel::kWarning>("NON send failed for MID %u",
+                                    msg.message_id);
     return MessengerError::kTransportError;
   }
   return MessengerError::kOk;
@@ -83,12 +96,16 @@ void Messenger::Tick(uint32_t elapsed_ms) {
       case RetransmitState::Action::kWaiting:
         return false;
       case RetransmitState::Action::kRetransmit:
-        // TODO: Log if send fails
-        static_cast<void>(transport_.Send(
-            slot.destination,
-            std::span<const std::byte>{slot.buffer.data(), slot.size}));
+        if (auto result = transport_.Send(
+                slot.destination,
+                std::span<const std::byte>{slot.buffer.data(), slot.size});
+            result != TransportError::kOk) {
+          detail::Log<LogLevel::kWarning>("CON retransmit send failed");
+        }
         return false;
       case RetransmitState::Action::kGiveUp:
+        detail::Log<LogLevel::kWarning>(
+            "CON MID %u timed out after max retransmits", slot.message_id);
         if (handler_) handler_->OnConTimeout(slot.message_id);
         return true;
     }
@@ -99,7 +116,11 @@ void Messenger::Tick(uint32_t elapsed_ms) {
 void Messenger::OnReceive(const Endpoint& sender,
                           std::span<const std::byte> data) {
   Message msg{};
-  if (Deserialize(data, msg) != DeserializeError::kOk) return;
+  if (Deserialize(data, msg) != DeserializeError::kOk) {
+    detail::Log<LogLevel::kDebug>("discarding malformed datagram (%zu bytes)",
+                                  data.size());
+    return;
+  }
 
   if (msg.type == MessageType::kAck || msg.type == MessageType::kRst) {
     AckPending(msg.message_id);

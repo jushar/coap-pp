@@ -4,6 +4,7 @@
 #include <cstring>
 #include <variant>
 
+#include "coap_pp/log.hpp"
 #include "coap_pp/pdu/builder.hpp"
 
 namespace coap_pp {
@@ -37,7 +38,10 @@ CoapServer::CoapServer(Messenger& messenger, std::span<Router*> routers)
 }
 
 void CoapServer::AddRouter(Router& router) {
-  if (router_count_ >= routers_.size()) return;
+  if (router_count_ >= routers_.size()) {
+    detail::Log<LogLevel::kError>("router table full, ignoring router");
+    return;
+  }
   routers_[router_count_++] = &router;
 }
 
@@ -76,6 +80,9 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   if (found_route == nullptr) {
     const Code error =
         path_matched ? codes::kMethodNotAllowed : codes::kNotFound;
+    detail::Log<LogLevel::kInfo>(
+        "%s: %.*s", path_matched ? "405 Method Not Allowed" : "404 Not Found",
+        static_cast<int>(path_len), path_buf);
     SendResponse(sender, msg, Response{error, {}});
     return;
   }
@@ -101,7 +108,10 @@ void CoapServer::SendEmptyAck(const Endpoint& to, uint16_t message_id) {
   builder.SetType(MessageType::kAck)
       .SetCode(codes::kEmpty)
       .SetMessageId(message_id);
-  (void)messenger_.Send(to, builder.Build());
+  if (messenger_.Send(to, builder.Build()) != MessengerError::kOk) {
+    detail::Log<LogLevel::kWarning>("failed to send empty ACK for MID %u",
+                                    message_id);
+  }
 }
 
 void CoapServer::SendAsyncResponse(const Endpoint& to, MessageType req_type,
@@ -121,7 +131,10 @@ void CoapServer::SendAsyncResponse(const Endpoint& to, MessageType req_type,
   if (!resp.payload.empty()) {
     builder.SetPayload(resp.payload);
   }
-  (void)messenger_.Send(to, builder.Build());
+  if (messenger_.Send(to, builder.Build()) != MessengerError::kOk) {
+    detail::Log<LogLevel::kWarning>("failed to send async response for MID %u",
+                                    req_mid);
+  }
 }
 
 void CoapServer::SendResponse(const Endpoint& to, const Message& req,
@@ -143,7 +156,10 @@ void CoapServer::SendResponse(const Endpoint& to, const Message& req,
     builder.SetPayload(resp.payload);
   }
 
-  (void)messenger_.Send(to, builder.Build());
+  if (messenger_.Send(to, builder.Build()) != MessengerError::kOk) {
+    detail::Log<LogLevel::kWarning>("failed to send response for MID %u",
+                                    req.message_id);
+  }
 }
 
 }  // namespace coap_pp

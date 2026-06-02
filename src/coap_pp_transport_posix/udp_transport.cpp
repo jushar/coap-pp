@@ -8,6 +8,8 @@
 #include <array>
 #include <cstring>
 
+#include "coap_pp/log.hpp"
+
 namespace coap_pp {
 
 PosixUdpTransport::PosixUdpTransport(uint16_t port) : port_{port} {}
@@ -17,6 +19,7 @@ PosixUdpTransport::~PosixUdpTransport() { Stop(); }
 TransportError PosixUdpTransport::Start() {
   fd_ = ::socket(AF_INET, SOCK_DGRAM, 0);
   if (fd_ < 0) {
+    detail::Log<LogLevel::kError>("socket() failed");
     return TransportError::kError;
   }
 
@@ -25,6 +28,7 @@ TransportError PosixUdpTransport::Start() {
   tv.tv_sec = 0;
   tv.tv_usec = 100'000;  // 100 ms
   if (::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+    detail::Log<LogLevel::kError>("setsockopt(SO_RCVTIMEO) failed");
     ::close(fd_);
     fd_ = -1;
     return TransportError::kError;
@@ -36,6 +40,7 @@ TransportError PosixUdpTransport::Start() {
   addr.sin_port = htons(port_);
 
   if (::bind(fd_, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) < 0) {
+    detail::Log<LogLevel::kError>("bind() failed on port %u", port_);
     ::close(fd_);
     fd_ = -1;
     return TransportError::kError;
@@ -61,7 +66,10 @@ TransportError PosixUdpTransport::Send(const Endpoint& destination,
   const auto n =
       ::sendto(fd_, data.data(), data.size(), 0,
                reinterpret_cast<const sockaddr*>(&addr), sizeof(addr));
-  if (n < 0) return TransportError::kError;
+  if (n < 0) {
+    detail::Log<LogLevel::kWarning>("sendto() failed");
+    return TransportError::kError;
+  }
   return TransportError::kOk;
 }
 

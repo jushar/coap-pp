@@ -1,5 +1,6 @@
 #include "coap_pp/pdu/deserialize.hpp"
 
+#include "coap_pp/log.hpp"
 #include "option_field.hpp"
 
 namespace coap_pp {
@@ -56,6 +57,7 @@ DeserializeError ScanOptions(std::span<const std::byte> raw, std::size_t pos,
 DeserializeError Deserialize(std::span<const std::byte> raw, Message& out) {
   // Fixed header: 4 bytes minimum.
   if (raw.size() < 4u) {
+    detail::Log<LogLevel::kDebug>("datagram too short (%zu bytes)", raw.size());
     return DeserializeError::kMessageTooShort;
   }
 
@@ -64,14 +66,17 @@ DeserializeError Deserialize(std::span<const std::byte> raw, Message& out) {
   const uint8_t tkl = first & 0x0Fu;
 
   if (ver != 1u) {
+    detail::Log<LogLevel::kDebug>("unsupported CoAP version %u", ver);
     return DeserializeError::kInvalidVersion;
   }
   if (tkl > Token::kMaxLength) {
+    detail::Log<LogLevel::kDebug>("invalid token length %u", tkl);
     return DeserializeError::kInvalidTokenLength;
   }
 
   const std::size_t header_end = 4u + tkl;
   if (raw.size() < header_end) {
+    detail::Log<LogLevel::kDebug>("datagram truncated in token field");
     return DeserializeError::kMessageTooShort;
   }
 
@@ -89,6 +94,10 @@ DeserializeError Deserialize(std::span<const std::byte> raw, Message& out) {
   std::size_t payload_start{};
   if (const auto e = ScanOptions(raw, header_end, options_end, payload_start);
       e != DeserializeError::kOk) {
+    detail::Log<LogLevel::kDebug>(
+        "malformed options in MID %u",
+        (static_cast<uint16_t>(static_cast<uint8_t>(raw[2])) << 8u) |
+            static_cast<uint16_t>(static_cast<uint8_t>(raw[3])));
     return e;
   }
 
