@@ -9,11 +9,14 @@ A C++20 implementation of the CoAP protocol ([RFC 7252](https://www.rfc-editor.o
 - CoAP server, with semi-dynamic registration of endpoints
 - Async responses
 
-**Design goals:**
+**Goals:**
 - No heap allocations — all buffers are statically sized or provided via `MemoryPool`
 - Platform-agnostic core; platform-specific code lives only in transport implementations
 - C++20, Google C++ Style Guide
 
+**Non-goals:**
+- Hardened implementation that is exposed to the internet. The goal is to provide an implementation for internal MCU networks.
+  Therefore, the implementation migth be prone to DoS.
 
 ## Library layout
 
@@ -22,6 +25,7 @@ A C++20 implementation of the CoAP protocol ([RFC 7252](https://www.rfc-editor.o
 | `coap-pp` | Core library: PDU (de)serialization, `Messenger`, `CoapServer`, routing |
 | `coap-pp-transport-posix` | POSIX IPv4 UDP transport (Linux / macOS) |
 | `coap-pp-transport-udp-ip-slip` | UDP/IP/SLIP transport over a serial port (platform-agnostic) |
+| `coap-pp-serde-nanopb` | NanoPB Serialization Layer |
 
 ## Requirements
 
@@ -63,7 +67,7 @@ using namespace coap_pp;
 
 int main() {
     SetLogHandler([](LogLevel level, std::string_view message) {
-    std::cout << message << std::endl;
+        std::cout << message << std::endl;
     });
 
     // 1. Transport

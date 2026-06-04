@@ -21,7 +21,7 @@ struct Endpoint {
   bool operator==(const Endpoint&) const = default;
 
   template <typename T>
-  static Endpoint From(const T& addr) {
+  static constexpr Endpoint From(const T& addr) {
     static_assert(sizeof(T) <= kStorageSize,
                   "Address does not fit into endpoint");
 

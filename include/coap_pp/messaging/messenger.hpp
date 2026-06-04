@@ -33,7 +33,7 @@ class MessageHandlerIF {
   virtual void OnMessage(const Endpoint& sender, const Message& msg) = 0;
 
   // Called when a CON we sent is never acknowledged after MAX_RETRANSMIT.
-  virtual void OnConTimeout(uint16_t message_id) {}
+  virtual void OnConTimeout([[maybe_unused]] uint16_t message_id) {}
 };
 
 // Ties a TransportIF to CoAP deserialize/dispatch and RFC 7252 §4.2 CON
