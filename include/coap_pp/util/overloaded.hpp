@@ -1,3 +1,7 @@
+/**
+ * Copyright (c) 2026 jushar
+ * SPDX-License-Identifier: MIT
+ */
 #ifndef COAP_PP_UTIL_OVERLOADED_HPP
 #define COAP_PP_UTIL_OVERLOADED_HPP
 

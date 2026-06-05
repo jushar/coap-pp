@@ -1,13 +1,16 @@
+/**
+ * Copyright (c) 2026 jushar
+ * SPDX-License-Identifier: MIT
+ */
 #ifndef COAP_PP_PDU_SERIALIZE_HPP
 #define COAP_PP_PDU_SERIALIZE_HPP
 
 #include <cstddef>
 #include <cstdint>
 
-#include "coap_pp/util/span.hpp"
-
 #include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/option.hpp"
+#include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
 

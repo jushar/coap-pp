@@ -1,3 +1,6 @@
+# Copyright (c) 2026 jushar
+# SPDX-License-Identifier: MIT
+
 add_executable(coap-hello-world hello_world.cpp)
 
 target_link_libraries(coap-hello-world PRIVATE coap-pp-transport-posix)

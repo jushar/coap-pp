@@ -1,3 +1,7 @@
+/**
+ * Copyright (c) 2026 jushar
+ * SPDX-License-Identifier: MIT
+ */
 #ifndef COAP_PP_TRANSPORT_UDP_IP_SLIP_SERIAL_PORT_IF_HPP
 #define COAP_PP_TRANSPORT_UDP_IP_SLIP_SERIAL_PORT_IF_HPP
 

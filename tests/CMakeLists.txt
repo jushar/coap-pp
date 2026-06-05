@@ -1,3 +1,6 @@
+# Copyright (c) 2026 jushar
+# SPDX-License-Identifier: MIT
+
 add_executable(coap-pp-tests
     test_transport_interface.cpp
     test_pdu.cpp

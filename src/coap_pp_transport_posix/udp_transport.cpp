@@ -1,3 +1,7 @@
+/**
+ * Copyright (c) 2026 jushar
+ * SPDX-License-Identifier: MIT
+ */
 #include "coap_pp_transport_posix/udp_transport.hpp"
 
 #include <arpa/inet.h>

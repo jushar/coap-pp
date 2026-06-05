@@ -1,3 +1,7 @@
+/**
+ * Copyright (c) 2026 jushar
+ * SPDX-License-Identifier: MIT
+ */
 #include "coap_pp/pdu/serialize.hpp"
 
 #include <variant>

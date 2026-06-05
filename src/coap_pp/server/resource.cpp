@@ -1,3 +1,7 @@
+/**
+ * Copyright (c) 2026 jushar
+ * SPDX-License-Identifier: MIT
+ */
 #include "coap_pp/server/resource.hpp"
 
 #include "coap_pp/server/coap_server.hpp"

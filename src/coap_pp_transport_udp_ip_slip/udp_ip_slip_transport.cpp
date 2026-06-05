@@ -1,3 +1,7 @@
+/**
+ * Copyright (c) 2026 jushar
+ * SPDX-License-Identifier: MIT
+ */
 #include "coap_pp_transport_udp_ip_slip/udp_ip_slip_transport.hpp"
 
 #include <array>

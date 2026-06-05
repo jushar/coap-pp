@@ -1,3 +1,6 @@
+# Copyright (c) 2026 jushar
+# SPDX-License-Identifier: MIT
+
 cmake_minimum_required(VERSION 3.30)
 project(coap-pp VERSION 0.1.0 LANGUAGES CXX)
 
