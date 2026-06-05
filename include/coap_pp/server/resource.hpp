@@ -3,14 +3,18 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <variant>
 
-#include "coap_pp/util/span.hpp"
+#ifdef COAP_PP_USE_INPLACE_FUNCTION
+#include "coap_pp/util/inplace_function.hpp"
+#else
+#include <functional>
+#endif
 
 #include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/option.hpp"
 #include "coap_pp/transport/endpoint.hpp"
+#include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
 
@@ -80,8 +84,15 @@ struct Request {
 // A handler may respond immediately (Response) or defer via AsyncResponse.
 using HandlerResult = std::variant<Response, AsyncResponse>;
 
-// Handler callable. May capture state (e.g. [this]) — stored via std::function.
+// Handler callable. May capture state (e.g. [this]).
+// Stored via std::function by default; set COAP_PP_USE_INPLACE_FUNCTION (CMake
+// option) to use a fixed-buffer inplace_function instead (no heap allocation).
+#ifdef COAP_PP_USE_INPLACE_FUNCTION
+using RequestHandler = inplace_function<HandlerResult(const Request&),
+                                        COAP_PP_INPLACE_FUNCTION_CAPACITY>;
+#else
 using RequestHandler = std::function<HandlerResult(const Request&)>;
+#endif
 
 // Binds a const member function to an instance, producing a RequestHandler.
 // Usage: BindHandler<&MyController::HandleFoo>(this)

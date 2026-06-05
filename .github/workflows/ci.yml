@@ -14,9 +14,11 @@ jobs:
         compiler:
           - { name: gcc,   cc: gcc-14,    cxx: g++-14      }
           - { name: clang, cc: clang-18,  cxx: clang++-18  }
-        no_std_span: [false, true]
+        opts:
+          - { no_std_span: false, inplace_function: false }
+          - { no_std_span: true,  inplace_function: true  }
 
-    name: ${{ matrix.compiler.name }} / no_std_span=${{ matrix.no_std_span }}
+    name: ${{ matrix.compiler.name }} / no_std_span=${{ matrix.opts.no_std_span }} inplace=${{ matrix.opts.inplace_function }}
 
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +43,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCOAP_PP_BUILD_TESTS=ON \
             -DCOAP_PP_BUILD_EXAMPLES=OFF \
-            ${{ matrix.no_std_span && '-DCOAP_PP_NO_STD_SPAN=1' || '' }}
+            ${{ matrix.opts.no_std_span && '-DCOAP_PP_NO_STD_SPAN=1' || '' }} \
+            ${{ matrix.opts.inplace_function && '-DCOAP_PP_USE_INPLACE_FUNCTION=ON' || '' }}
 
       - name: Build
         run: cmake --build build --parallel

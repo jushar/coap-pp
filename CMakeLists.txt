@@ -29,6 +29,17 @@ if(DEFINED COAP_PP_NO_STD_SPAN)
     target_compile_definitions(coap-pp PUBLIC COAP_PP_NO_STD_SPAN=${COAP_PP_NO_STD_SPAN})
 endif()
 
+option(COAP_PP_USE_INPLACE_FUNCTION
+    "Use a fixed-buffer inplace_function instead of std::function for RequestHandler (no heap allocation)"
+    OFF)
+if(COAP_PP_USE_INPLACE_FUNCTION)
+    set(COAP_PP_INPLACE_FUNCTION_CAPACITY "32" CACHE STRING
+        "Buffer capacity in bytes for the inplace_function RequestHandler storage")
+    target_compile_definitions(coap-pp PUBLIC
+        COAP_PP_USE_INPLACE_FUNCTION
+        COAP_PP_INPLACE_FUNCTION_CAPACITY=${COAP_PP_INPLACE_FUNCTION_CAPACITY})
+endif()
+
 target_include_directories(coap-pp
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
