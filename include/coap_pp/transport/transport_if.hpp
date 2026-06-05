@@ -3,7 +3,8 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
+
+#include "coap_pp/util/span.hpp"
 
 #include "coap_pp/transport/endpoint.hpp"
 
@@ -27,7 +28,7 @@ class TransportReceiverIF {
   // Called by the transport for each received datagram.
   // `data` is valid only for the duration of this call.
   virtual void OnReceive(const Endpoint& sender,
-                         std::span<const std::byte> data) = 0;
+                         span<const std::byte> data) = 0;
 };
 
 // Abstracts a connectionless, unreliable datagram transport (e.g. UDP,
@@ -52,7 +53,7 @@ class TransportIF {
   // Transmit a datagram to `destination`. `data.size()` MUST NOT exceed
   // kMaxMessageSize. Returns TransportError::kError on failure.
   [[nodiscard]] virtual TransportError Send(
-      const Endpoint& destination, std::span<const std::byte> data) = 0;
+      const Endpoint& destination, span<const std::byte> data) = 0;
 
   // Register the receiver that will be notified via OnReceive().
   // Must be called before Start(). Only one receiver is supported.

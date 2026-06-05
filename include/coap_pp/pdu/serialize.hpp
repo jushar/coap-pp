@@ -3,7 +3,8 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
+
+#include "coap_pp/util/span.hpp"
 
 #include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/option.hpp"
@@ -19,8 +20,8 @@ struct OutgoingMessage {
   Code code{};
   uint16_t message_id{0};
   Token token{};
-  std::span<const OptionView> options{};
-  std::span<const std::byte> payload{};
+  span<const OptionView> options{};
+  span<const std::byte> payload{};
 };
 
 enum class SerializeError : uint8_t {
@@ -31,7 +32,7 @@ enum class SerializeError : uint8_t {
 // Serializes msg into out[0..written-1]. Returns SerializeError::kOk on
 // success.
 [[nodiscard]] SerializeError Serialize(const OutgoingMessage& msg,
-                                       std::span<std::byte> out,
+                                       span<std::byte> out,
                                        std::size_t& written);
 
 }  // namespace coap_pp

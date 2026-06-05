@@ -63,7 +63,7 @@ MessengerError Messenger::Send(const Endpoint& destination,
     slot.message_id = msg.message_id;
     slot.retry.Reset(kAckTimeoutMs);
 
-    if (transport_.Send(destination, std::span<const std::byte>{
+    if (transport_.Send(destination, span<const std::byte>{
                                          slot.buffer.data(),
                                          slot.size}) != TransportError::kOk) {
       detail::Log<LogLevel::kWarning>("CON initial send failed for MID %u",
@@ -80,7 +80,7 @@ MessengerError Messenger::Send(const Endpoint& destination,
                                   msg.message_id);
     return MessengerError::kSerializeFailed;
   }
-  if (transport_.Send(destination, std::span<const std::byte>{
+  if (transport_.Send(destination, span<const std::byte>{
                                        tx_scratch_.data(),
                                        written}) != TransportError::kOk) {
     detail::Log<LogLevel::kWarning>("NON send failed for MID %u",
@@ -98,7 +98,7 @@ void Messenger::Tick(uint32_t elapsed_ms) {
       case RetransmitState::Action::kRetransmit:
         if (auto result = transport_.Send(
                 slot.destination,
-                std::span<const std::byte>{slot.buffer.data(), slot.size});
+                span<const std::byte>{slot.buffer.data(), slot.size});
             result != TransportError::kOk) {
           detail::Log<LogLevel::kWarning>("CON retransmit send failed");
         }
@@ -114,7 +114,7 @@ void Messenger::Tick(uint32_t elapsed_ms) {
 }
 
 void Messenger::OnReceive(const Endpoint& sender,
-                          std::span<const std::byte> data) {
+                          span<const std::byte> data) {
   Message msg{};
   if (Deserialize(data, msg) != DeserializeError::kOk) {
     detail::Log<LogLevel::kDebug>("discarding malformed datagram (%zu bytes)",

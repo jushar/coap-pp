@@ -4,8 +4,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
-#include <span>
 #include <string_view>
+
+#include "coap_pp/util/span.hpp"
 #include <variant>
 
 namespace coap_pp {
@@ -21,7 +22,7 @@ enum class OptionFormat : uint8_t { kEmpty, kUint, kString, kOpaque };
 //
 // string_view and span are non-owning; lifetime is tied to the datagram buffer.
 using OptionValue = std::variant<std::monostate, uint32_t, std::string_view,
-                                 std::span<const std::byte> >;
+                                 span<const std::byte> >;
 
 struct OptionView {
   uint16_t number{0};
@@ -70,7 +71,7 @@ inline OptionFormat GetOptionFormat(uint16_t number) {
 
 // Decode a CoAP variable-length unsigned integer (RFC 7252 §3.2).
 // Big-endian, leading zeros omitted; empty span represents zero.
-inline uint32_t DecodeUint(std::span<const std::byte> bytes) {
+inline uint32_t DecodeUint(span<const std::byte> bytes) {
   uint32_t result = 0;
   for (auto b : bytes) {
     result = (result << 8u) | static_cast<uint8_t>(b);
@@ -153,7 +154,7 @@ inline void OptionsIterator::DeserializeCurrent() {
   current_.number = static_cast<uint16_t>(accumulated_number_ + delta);
   next_cursor_ = p + length;
 
-  const std::span<const std::byte> raw{p, length};
+  const span<const std::byte> raw{p, length};
 
   switch (GetOptionFormat(current_.number)) {
     case OptionFormat::kEmpty:
@@ -179,7 +180,7 @@ inline void OptionsIterator::DeserializeCurrent() {
 class OptionsView {
  public:
   OptionsView() = default;
-  explicit OptionsView(std::span<const std::byte> raw) : raw_(raw) {}
+  explicit OptionsView(span<const std::byte> raw) : raw_(raw) {}
 
   [[nodiscard]] OptionsIterator begin() const {
     return OptionsIterator{raw_.data(), raw_.data() + raw_.size()};
@@ -191,10 +192,10 @@ class OptionsView {
   }
 
   [[nodiscard]] bool empty() const { return raw_.empty(); }
-  [[nodiscard]] std::span<const std::byte> raw() const { return raw_; }
+  [[nodiscard]] span<const std::byte> raw() const { return raw_; }
 
  private:
-  std::span<const std::byte> raw_{};
+  span<const std::byte> raw_{};
 };
 
 }  // namespace coap_pp

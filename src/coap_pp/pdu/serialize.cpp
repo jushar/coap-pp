@@ -20,7 +20,7 @@ namespace {
 
 }  // namespace
 
-SerializeError Serialize(const OutgoingMessage& msg, std::span<std::byte> out,
+SerializeError Serialize(const OutgoingMessage& msg, span<std::byte> out,
                          std::size_t& written) {
   std::size_t pos = 0;
 
@@ -53,7 +53,7 @@ SerializeError Serialize(const OutgoingMessage& msg, std::span<std::byte> out,
             [](std::monostate) -> std::size_t { return 0u; },
             [](uint32_t v) -> std::size_t { return UintEncodedLength(v); },
             [](std::string_view sv) -> std::size_t { return sv.size(); },
-            [](std::span<const std::byte> s) -> std::size_t {
+            [](span<const std::byte> s) -> std::size_t {
               return s.size();
             },
         },
@@ -104,7 +104,7 @@ SerializeError Serialize(const OutgoingMessage& msg, std::span<std::byte> out,
               }
               return true;
             },
-            [&](std::span<const std::byte> s) {
+            [&](span<const std::byte> s) {
               for (auto b : s) {
                 if (pos >= out.size()) return false;
                 out[pos++] = b;

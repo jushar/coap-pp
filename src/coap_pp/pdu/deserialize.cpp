@@ -11,7 +11,7 @@ namespace {
 // On success: options_end and payload_start are set.
 //   - [pos, options_end) is the validated options span passed to OptionsView.
 //   - [payload_start, raw.size()) is the payload (empty if no payload marker).
-DeserializeError ScanOptions(std::span<const std::byte> raw, std::size_t pos,
+DeserializeError ScanOptions(span<const std::byte> raw, std::size_t pos,
                              std::size_t& options_end,
                              std::size_t& payload_start) {
   while (pos < raw.size()) {
@@ -54,7 +54,7 @@ DeserializeError ScanOptions(std::span<const std::byte> raw, std::size_t pos,
 
 }  // namespace
 
-DeserializeError Deserialize(std::span<const std::byte> raw, Message& out) {
+DeserializeError Deserialize(span<const std::byte> raw, Message& out) {
   // Fixed header: 4 bytes minimum.
   if (raw.size() < 4u) {
     detail::Log<LogLevel::kDebug>("datagram too short (%zu bytes)", raw.size());
@@ -103,7 +103,7 @@ DeserializeError Deserialize(std::span<const std::byte> raw, Message& out) {
 
   out.options = OptionsView{raw.subspan(header_end, options_end - header_end)};
   out.payload = (payload_start < raw.size()) ? raw.subspan(payload_start)
-                                             : std::span<const std::byte>{};
+                                             : span<const std::byte>{};
   return DeserializeError::kOk;
 }
 

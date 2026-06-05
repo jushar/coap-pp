@@ -1,8 +1,9 @@
 #ifndef COAP_PP_SERVER_ROUTER_HPP
 #define COAP_PP_SERVER_ROUTER_HPP
 
-#include <span>
 #include <string_view>
+
+#include "coap_pp/util/span.hpp"
 
 #include "coap_pp/server/resource.hpp"
 
@@ -30,15 +31,15 @@ struct Route {
 //   Router router{"/api", kRoutes};
 class Router {
  public:
-  Router(std::string_view base_path, std::span<const Route> routes)
+  Router(std::string_view base_path, span<const Route> routes)
       : base_path_{base_path}, routes_{routes} {}
 
   std::string_view GetBasePath() const { return base_path_; }
-  std::span<const Route> GetRoutes() const { return routes_; }
+  span<const Route> GetRoutes() const { return routes_; }
 
  private:
   std::string_view base_path_;
-  std::span<const Route> routes_;
+  span<const Route> routes_;
 };
 
 }  // namespace coap_pp

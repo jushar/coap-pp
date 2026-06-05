@@ -3,7 +3,8 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
+
+#include "coap_pp/util/span.hpp"
 
 #include "coap_pp/messaging/messenger.hpp"
 #include "coap_pp/server/router.hpp"
@@ -29,7 +30,7 @@ class CoapServer : private MessageHandlerIF {
  public:
   // Calls messenger.SetHandler(*this) immediately.
   // routers is caller-provided storage for Router pointers.
-  CoapServer(Messenger& messenger, std::span<Router*> routers);
+  CoapServer(Messenger& messenger, span<Router*> routers);
 
   // Mount a router. Silently no-ops when the routers span is full.
   void AddRouter(Router& router);
@@ -54,7 +55,7 @@ class CoapServer : private MessageHandlerIF {
   friend class AsyncResponse;
 
   Messenger& messenger_;
-  std::span<Router*> routers_;
+  span<Router*> routers_;
   std::size_t router_count_{0};
   uint16_t next_mid_{1u};
 };

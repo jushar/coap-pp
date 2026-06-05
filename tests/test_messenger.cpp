@@ -26,7 +26,7 @@ class MockTransport : public TransportIF {
   void Stop() override {}
 
   TransportError Send(const Endpoint& dest,
-                      std::span<const std::byte> data) override {
+                      span<const std::byte> data) override {
     if (sends_.full()) return {};
     sends_.push_back({});
     auto& r = sends_.back();
@@ -40,7 +40,7 @@ class MockTransport : public TransportIF {
   Endpoint LocalEndpoint() const override { return {}; }
 
   // Simulate receiving a datagram.
-  void InjectReceive(const Endpoint& sender, std::span<const std::byte> data) {
+  void InjectReceive(const Endpoint& sender, span<const std::byte> data) {
     if (receiver_) receiver_->OnReceive(sender, data);
   }
 
@@ -215,7 +215,7 @@ TEST_F(MessengerTest, ReceiveACK_ClearsPendingSlot) {
 
   auto [ack_bytes, ack_size] = MakeAckBytes(0x0010u);
   transport_.InjectReceive(
-      Endpoint{}, std::span<const std::byte>{ack_bytes.data(), ack_size});
+      Endpoint{}, span<const std::byte>{ack_bytes.data(), ack_size});
 
   EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
             0u);
@@ -231,7 +231,7 @@ TEST_F(MessengerTest, ReceiveRST_ClearsPendingSlot) {
 
   auto [rst_bytes, rst_size] = MakeRstBytes(0x0020u);
   transport_.InjectReceive(
-      Endpoint{}, std::span<const std::byte>{rst_bytes.data(), rst_size});
+      Endpoint{}, span<const std::byte>{rst_bytes.data(), rst_size});
 
   EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
             0u);
@@ -249,7 +249,7 @@ TEST_F(MessengerTest, OnReceive_DispatchesToHandler) {
   (void)Serialize(b.Build(), buf, written);
 
   transport_.InjectReceive(Endpoint{},
-                           std::span<const std::byte>{buf.data(), written});
+                           span<const std::byte>{buf.data(), written});
 
   EXPECT_EQ(handler_.message_count_, 1);
   EXPECT_EQ(handler_.last_.message_id, 0xBEEFu);

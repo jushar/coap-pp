@@ -53,7 +53,7 @@ void UdpIpSlipTransport::Stop() {
 }
 
 TransportError UdpIpSlipTransport::Send(const Endpoint& destination,
-                                        std::span<const std::byte> data) {
+                                        span<const std::byte> data) {
   if (data.size() > kMaxMessageSize) return TransportError::kError;
 
   const auto payload_size = data.size();
@@ -105,7 +105,7 @@ TransportError UdpIpSlipTransport::Send(const Endpoint& destination,
   std::memcpy(packet.data() + kIpHeaderSize + kUdpHeaderSize, data.data(),
               payload_size);
 
-  SlipSendFrame(std::span<const std::byte>{
+  SlipSendFrame(span<const std::byte>{
       packet.data(), kIpHeaderSize + kUdpHeaderSize + payload_size});
   return TransportError::kOk;
 }
@@ -130,8 +130,8 @@ Endpoint UdpIpSlipTransport::MakeEndpoint(std::array<uint8_t, 4> ip,
 // Encode `data` as a SLIP frame and write it to the serial port.
 // Sends runs of non-special bytes in a single Write() call to minimise
 // the number of serial transactions.
-void UdpIpSlipTransport::SlipSendFrame(std::span<const std::byte> data) {
-  serial_.Write(std::span{&kSlipEnd, 1});
+void UdpIpSlipTransport::SlipSendFrame(span<const std::byte> data) {
+  serial_.Write(span<const std::byte>{&kSlipEnd, 1});
 
   std::size_t chunk_start = 0;
   for (std::size_t i = 0; i < data.size(); ++i) {
@@ -141,10 +141,10 @@ void UdpIpSlipTransport::SlipSendFrame(std::span<const std::byte> data) {
       }
       if (data[i] == kSlipEnd) {
         const std::byte esc[2] = {kSlipEsc, kSlipEscEnd};
-        serial_.Write(std::span{esc, 2});
+        serial_.Write(span<const std::byte>{esc, 2});
       } else {
         const std::byte esc[2] = {kSlipEsc, kSlipEscEsc};
-        serial_.Write(std::span{esc, 2});
+        serial_.Write(span<const std::byte>{esc, 2});
       }
       chunk_start = i + 1;
     }
@@ -153,12 +153,12 @@ void UdpIpSlipTransport::SlipSendFrame(std::span<const std::byte> data) {
     serial_.Write(data.subspan(chunk_start));
   }
 
-  serial_.Write(std::span{&kSlipEnd, 1});
+  serial_.Write(span<const std::byte>{&kSlipEnd, 1});
 }
 
 // Validate a decoded SLIP frame as a UDP/IP datagram addressed to us and
 // dispatch its payload to the registered receiver.
-void UdpIpSlipTransport::ProcessFrame(std::span<const std::byte> frame) {
+void UdpIpSlipTransport::ProcessFrame(span<const std::byte> frame) {
   if (frame.size() < kIpHeaderSize + kUdpHeaderSize) return;
 
   // IPv4 version and header length.
@@ -245,7 +245,7 @@ void UdpIpSlipTransport::ReceiveLoop() {
 
     if (b == kSlipEnd) {
       if (in_frame && frame_len > 0 && !frame_overflow) {
-        ProcessFrame(std::span<const std::byte>{frame_buf.data(), frame_len});
+        ProcessFrame(span<const std::byte>{frame_buf.data(), frame_len});
       }
       frame_len = 0;
       in_frame = true;

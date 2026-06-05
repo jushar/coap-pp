@@ -11,7 +11,7 @@ namespace {
 class MockTransportReceiver : public TransportReceiverIF {
  public:
   void OnReceive(const Endpoint& sender,
-                 std::span<const std::byte> data) override {
+                 span<const std::byte> data) override {
     last_sender = sender;
     received_bytes = data.size();
   }
@@ -27,7 +27,7 @@ class MockTransport : public TransportIF {
   TransportError Start() override { return TransportError::kOk; }
   void Stop() override {}
 
-  TransportError Send(const Endpoint&, std::span<const std::byte>) override {
+  TransportError Send(const Endpoint&, span<const std::byte>) override {
     return TransportError::kOk;
   }
 

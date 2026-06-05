@@ -3,7 +3,8 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
+
+#include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
 
@@ -11,7 +12,7 @@ namespace coap_pp {
 // Used by both serialize.cpp (write path) and deserialize.cpp (validation scan
 // path).
 
-[[nodiscard]] inline bool WriteByte(std::span<std::byte> out, std::size_t& pos,
+[[nodiscard]] inline bool WriteByte(span<std::byte> out, std::size_t& pos,
                                     uint8_t b) {
   if (pos >= out.size()) return false;
   out[pos++] = static_cast<std::byte>(b);
@@ -22,7 +23,7 @@ namespace coap_pp {
 // bytes. Writes the extension bytes to `out` starting at `pos`. Sets `nibble`
 // to the 4-bit header value (0–14). Returns false if the buffer is too small.
 [[nodiscard]] inline bool EncodeExtField(uint32_t value,
-                                         std::span<std::byte> out,
+                                         span<std::byte> out,
                                          std::size_t& pos, uint8_t& nibble) {
   if (value <= 12u) {
     nibble = static_cast<uint8_t>(value);
@@ -42,7 +43,7 @@ namespace coap_pp {
 // the bounds-checked validation scan; advances `pos` past the ext bytes.
 // Returns false if the span is too short.
 [[nodiscard]] inline bool ScanExtField(uint8_t nibble,
-                                       std::span<const std::byte> raw,
+                                       span<const std::byte> raw,
                                        std::size_t& pos, uint32_t& value) {
   if (nibble <= 12u) {
     value = nibble;

@@ -3,8 +3,9 @@
 
 #include <atomic>
 #include <cstdint>
-#include <span>
 #include <thread>
+
+#include "coap_pp/util/span.hpp"
 
 #include "coap_pp/transport/endpoint.hpp"
 #include "coap_pp/transport/transport_if.hpp"
@@ -30,7 +31,7 @@ class PosixUdpTransport : public TransportIF {
   void Stop() override;
 
   [[nodiscard]] TransportError Send(const Endpoint& destination,
-                                    std::span<const std::byte> data) override;
+                                    span<const std::byte> data) override;
 
   void SetReceiver(TransportReceiverIF& receiver) override;
   Endpoint LocalEndpoint() const override;

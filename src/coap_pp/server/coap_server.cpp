@@ -32,7 +32,7 @@ std::size_t JoinUriPath(const OptionsView& opts, char* buf,
 
 }  // namespace
 
-CoapServer::CoapServer(Messenger& messenger, std::span<Router*> routers)
+CoapServer::CoapServer(Messenger& messenger, span<Router*> routers)
     : messenger_{messenger}, routers_{routers} {
   messenger_.SetHandler(*this);
 }

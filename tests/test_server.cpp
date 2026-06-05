@@ -27,7 +27,7 @@ class MockTransport : public TransportIF {
   void Stop() override {}
 
   TransportError Send(const Endpoint& dest,
-                      std::span<const std::byte> data) override {
+                      span<const std::byte> data) override {
     if (!sends_.full()) {
       sends_.push_back({});
       auto& r = sends_.back();
@@ -41,7 +41,7 @@ class MockTransport : public TransportIF {
   void SetReceiver(TransportReceiverIF& r) override { receiver_ = &r; }
   Endpoint LocalEndpoint() const override { return {}; }
 
-  void Inject(const Endpoint& sender, std::span<const std::byte> data) {
+  void Inject(const Endpoint& sender, span<const std::byte> data) {
     if (receiver_) receiver_->OnReceive(sender, data);
   }
 
@@ -49,14 +49,14 @@ class MockTransport : public TransportIF {
     EXPECT_GT(sends_.size(), 0u);
     Message m{};
     (void)Deserialize(
-        std::span<const std::byte>{sends_[0].data.data(), sends_[0].size}, m);
+        span<const std::byte>{sends_[0].data.data(), sends_[0].size}, m);
     return m;
   }
 
   Message DeserializeResponseAt(std::size_t index) const {
     EXPECT_GT(sends_.size(), index);
     Message m{};
-    (void)Deserialize(std::span<const std::byte>{sends_[index].data.data(),
+    (void)Deserialize(span<const std::byte>{sends_[index].data.data(),
                                                  sends_[index].size},
                       m);
     return m;
@@ -80,7 +80,7 @@ class ServerTest : public ::testing::Test {
 
   void InjectRequest(MessageType type, Code method, uint16_t mid,
                      std::string_view path,
-                     std::span<const std::byte> payload = {}) {
+                     span<const std::byte> payload = {}) {
     MessageBuilder<4> b;
     b.SetType(type).SetCode(method).SetMessageId(mid);
     std::string_view remaining = path;
@@ -98,7 +98,7 @@ class ServerTest : public ::testing::Test {
     std::size_t written = 0u;
     (void)Serialize(b.Build(), buf, written);
     transport_.Inject(Endpoint{},
-                      std::span<const std::byte>{buf.data(), written});
+                      span<const std::byte>{buf.data(), written});
   }
 };
 
@@ -193,7 +193,7 @@ TEST_F(ServerTest, Dispatch_ResponseCode_Ignored) {
   std::size_t written = 0u;
   (void)Serialize(b.Build(), buf, written);
   transport_.Inject(Endpoint{},
-                    std::span<const std::byte>{buf.data(), written});
+                    span<const std::byte>{buf.data(), written});
 
   EXPECT_EQ(transport_.sends_.size(), 0u);
 }
@@ -539,7 +539,7 @@ TEST_F(ServerTest, Async_CON_DelayedResponse_CarriesToken) {
   std::size_t written = 0u;
   (void)Serialize(b.Build(), buf, written);
   transport_.Inject(Endpoint{},
-                    std::span<const std::byte>{buf.data(), written});
+                    span<const std::byte>{buf.data(), written});
 
   pending.Send(Response{codes::kContent, {}});
 

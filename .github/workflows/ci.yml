@@ -14,8 +14,9 @@ jobs:
         compiler:
           - { name: gcc,   cc: gcc-14,    cxx: g++-14      }
           - { name: clang, cc: clang-18,  cxx: clang++-18  }
+        no_std_span: [false, true]
 
-    name: ${{ matrix.compiler.name }}
+    name: ${{ matrix.compiler.name }} / no_std_span=${{ matrix.no_std_span }}
 
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +40,8 @@ jobs:
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCOAP_PP_BUILD_TESTS=ON \
-            -DCOAP_PP_BUILD_EXAMPLES=OFF
+            -DCOAP_PP_BUILD_EXAMPLES=OFF \
+            ${{ matrix.no_std_span && '-DCOAP_PP_NO_STD_SPAN=1' || '' }}
 
       - name: Build
         run: cmake --build build --parallel

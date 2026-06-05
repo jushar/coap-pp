@@ -3,8 +3,9 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <span>
 #include <string_view>
+
+#include "coap_pp/util/span.hpp"
 
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/util/static_vector.hpp"
@@ -46,11 +47,11 @@ class MessageBuilder {
   MessageBuilder& AddOption(uint16_t number, std::string_view value) {
     return Push(OptionView{number, value});
   }
-  MessageBuilder& AddOption(uint16_t number, std::span<const std::byte> value) {
+  MessageBuilder& AddOption(uint16_t number, span<const std::byte> value) {
     return Push(OptionView{number, value});
   }
 
-  MessageBuilder& SetPayload(std::span<const std::byte> data) {
+  MessageBuilder& SetPayload(span<const std::byte> data) {
     payload_ = data;
     return *this;
   }
@@ -66,7 +67,7 @@ class MessageBuilder {
         code_,
         message_id_,
         token_,
-        std::span<const OptionView>{options_.data(), options_.size()},
+        span<const OptionView>{options_.data(), options_.size()},
         payload_,
     };
   }
@@ -82,7 +83,7 @@ class MessageBuilder {
   uint16_t message_id_{0};
   Token token_{};
   StaticVector<OptionView, MaxOptions> options_{};
-  std::span<const std::byte> payload_{};
+  span<const std::byte> payload_{};
 };
 
 }  // namespace coap_pp

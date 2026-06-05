@@ -4,8 +4,9 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
-#include <span>
 #include <thread>
+
+#include "coap_pp/util/span.hpp"
 
 #include "coap_pp/transport/endpoint.hpp"
 #include "coap_pp/transport/transport_if.hpp"
@@ -48,7 +49,7 @@ class UdpIpSlipTransport : public TransportIF {
   void Stop() override;
 
   [[nodiscard]] TransportError Send(const Endpoint& destination,
-                                    std::span<const std::byte> data) override;
+                                    span<const std::byte> data) override;
 
   void SetReceiver(TransportReceiverIF& receiver) override;
   Endpoint LocalEndpoint() const override;
@@ -60,8 +61,8 @@ class UdpIpSlipTransport : public TransportIF {
 
  private:
   void ReceiveLoop();
-  void SlipSendFrame(std::span<const std::byte> data);
-  void ProcessFrame(std::span<const std::byte> frame);
+  void SlipSendFrame(span<const std::byte> data);
+  void ProcessFrame(span<const std::byte> frame);
 
   SerialPortIF& serial_;
   std::array<uint8_t, 4> local_ip_;

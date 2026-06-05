@@ -2,7 +2,8 @@
 #define COAP_PP_TRANSPORT_UDP_IP_SLIP_SERIAL_PORT_IF_HPP
 
 #include <cstddef>
-#include <span>
+
+#include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
 
@@ -20,7 +21,7 @@ class SerialPortIF {
 
   // Transmit all bytes synchronously. Blocks until every byte has been handed
   // to the hardware / OS send buffer.
-  virtual void Write(std::span<const std::byte> data) = 0;
+  virtual void Write(span<const std::byte> data) = 0;
 
   // Receive one byte. Returns the byte value in [0, 255], or -1 on timeout /
   // no data. Must return within a bounded time (e.g., 100 ms) so that the

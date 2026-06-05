@@ -4,7 +4,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <span>
+
+#include "coap_pp/util/span.hpp"
 
 #include "coap_pp/pdu/option.hpp"
 
@@ -77,7 +78,7 @@ struct Token {
   std::array<std::byte, kMaxLength> bytes{};
   uint8_t length{0};
 
-  [[nodiscard]] std::span<const std::byte> View() const {
+  [[nodiscard]] span<const std::byte> View() const {
     return {bytes.data(), length};
   }
 
@@ -98,7 +99,7 @@ struct Message {
   uint16_t message_id{0};
   Token token{};
   OptionsView options{};
-  std::span<const std::byte> payload{};
+  span<const std::byte> payload{};
 };
 
 }  // namespace coap_pp

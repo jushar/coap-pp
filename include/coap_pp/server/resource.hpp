@@ -4,8 +4,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <span>
 #include <variant>
+
+#include "coap_pp/util/span.hpp"
 
 #include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/option.hpp"
@@ -22,7 +23,7 @@ struct Response {
   static constexpr uint32_t kNoContentFormat = ~0u;
 
   Code code{codes::kContent};
-  std::span<const std::byte> payload{};
+  span<const std::byte> payload{};
   uint32_t content_format{kNoContentFormat};
 };
 
@@ -55,10 +56,10 @@ class AsyncResponse {
 struct Request {
   Code method;
   OptionsView options;
-  std::span<const std::byte> payload;
+  span<const std::byte> payload;
 
   // Populated by CoapServer — not for direct construction by application code.
-  Request(Code method, OptionsView options, std::span<const std::byte> payload,
+  Request(Code method, OptionsView options, span<const std::byte> payload,
           CoapServer& server, const Endpoint& sender, MessageType req_type,
           uint16_t req_mid, const Token& token);
 

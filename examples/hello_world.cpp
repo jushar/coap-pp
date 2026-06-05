@@ -20,9 +20,8 @@ static constexpr std::string_view kSlowText = "slow response";
 class ExampleController final {
  private:
   HandlerResult HandleHello(const Request&) const {
-    return Response{
-        codes::kContent,
-        std::as_bytes(std::span{kHelloText.data(), kHelloText.size()}), 0u};
+    return Response{codes::kContent,
+                    as_bytes(span{kHelloText.data(), kHelloText.size()}), 0u};
   }
 
   // Async: handler returns immediately; the detached thread delivers the
@@ -33,9 +32,8 @@ class ExampleController final {
     auto async = req.MakeAsync();
     std::thread([a = async]() mutable {
       std::this_thread::sleep_for(2s);
-      a.Send(Response{
-          codes::kContent,
-          std::as_bytes(std::span{kSlowText.data(), kSlowText.size()}), 0u});
+      a.Send(Response{codes::kContent,
+                      as_bytes(span{kSlowText.data(), kSlowText.size()}), 0u});
     }).detach();
     return async;
   }

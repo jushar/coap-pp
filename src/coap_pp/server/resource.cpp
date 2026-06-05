@@ -25,7 +25,7 @@ void AsyncResponse::Send(const Response& resp) {
 // ───────────────────────────────────────────────────────────────────
 
 Request::Request(Code method, OptionsView options,
-                 std::span<const std::byte> payload, CoapServer& server,
+                 span<const std::byte> payload, CoapServer& server,
                  const Endpoint& sender, MessageType req_type, uint16_t req_mid,
                  const Token& token)
     : method{method},

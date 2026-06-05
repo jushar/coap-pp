@@ -25,6 +25,9 @@ add_library(coap-pp STATIC
 target_compile_features(coap-pp PUBLIC cxx_std_20)
 target_link_libraries(coap-pp PRIVATE coap-pp-warnings)
 target_compile_definitions(coap-pp PUBLIC COAP_PP_LOG_LEVEL=${COAP_PP_LOG_LEVEL})
+if(DEFINED COAP_PP_NO_STD_SPAN)
+    target_compile_definitions(coap-pp PUBLIC COAP_PP_NO_STD_SPAN=${COAP_PP_NO_STD_SPAN})
+endif()
 
 target_include_directories(coap-pp
     PUBLIC

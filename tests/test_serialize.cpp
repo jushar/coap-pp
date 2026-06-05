@@ -121,7 +121,7 @@ TEST(Serialize, StringOption_UriPath) {
   msg.type = MessageType::kCon;
   msg.code = codes::kGet;
   msg.message_id = 0x0001u;
-  msg.options = std::span<const OptionView>{&opt, 1};
+  msg.options = span<const OptionView>{&opt, 1};
 
   auto [buf, size, ec] = DoSerialize(msg);
   ASSERT_EQ(ec, SerializeError::kOk);
@@ -138,7 +138,7 @@ TEST(Serialize, UintOption_ContentFormat_Canonical) {
   msg.type = MessageType::kAck;
   msg.code = codes::kContent;
   msg.message_id = 0x0001u;
-  msg.options = std::span<const OptionView>{&opt, 1};
+  msg.options = span<const OptionView>{&opt, 1};
 
   auto [buf, size, ec] = DoSerialize(msg);
   ASSERT_EQ(ec, SerializeError::kOk);
@@ -154,7 +154,7 @@ TEST(Serialize, UintOption_ZeroValue) {
   msg.type = MessageType::kAck;
   msg.code = codes::kContent;
   msg.message_id = 0x0001u;
-  msg.options = std::span<const OptionView>{&opt, 1};
+  msg.options = span<const OptionView>{&opt, 1};
 
   auto [buf, size, ec] = DoSerialize(msg);
   ASSERT_EQ(ec, SerializeError::kOk);
@@ -169,7 +169,7 @@ TEST(Serialize, UintOption_MultiByteValue) {
   msg.type = MessageType::kAck;
   msg.code = codes::kContent;
   msg.message_id = 0x0001u;
-  msg.options = std::span<const OptionView>{&opt, 1};
+  msg.options = span<const OptionView>{&opt, 1};
 
   auto [buf, size, ec] = DoSerialize(msg);
   ASSERT_EQ(ec, SerializeError::kOk);
@@ -188,7 +188,7 @@ TEST(Serialize, EmptyOption_IfNoneMatch) {
   msg.type = MessageType::kCon;
   msg.code = codes::kGet;
   msg.message_id = 0x0001u;
-  msg.options = std::span<const OptionView>{&opt, 1};
+  msg.options = span<const OptionView>{&opt, 1};
 
   auto [buf, size, ec] = DoSerialize(msg);
   ASSERT_EQ(ec, SerializeError::kOk);
@@ -199,12 +199,12 @@ TEST(Serialize, EmptyOption_IfNoneMatch) {
 TEST(Serialize, OpaqueOption_ETag) {
   // ETag (4): delta=4, length=4 → header 0x44
   const auto raw_etag = MakeRaw(0xDE, 0xAD, 0xBE, 0xEF);
-  OptionView opt{4u, std::span<const std::byte>{raw_etag}};
+  OptionView opt{4u, span<const std::byte>{raw_etag}};
   OutgoingMessage msg;
   msg.type = MessageType::kCon;
   msg.code = codes::kGet;
   msg.message_id = 0x0001u;
-  msg.options = std::span<const OptionView>{&opt, 1};
+  msg.options = span<const OptionView>{&opt, 1};
 
   auto [buf, size, ec] = DoSerialize(msg);
   ASSERT_EQ(ec, SerializeError::kOk);
@@ -241,7 +241,7 @@ TEST(Serialize, OptionsAndPayload) {
   msg.type = MessageType::kCon;
   msg.code = codes::kGet;
   msg.message_id = 0x0001u;
-  msg.options = std::span<const OptionView>{&opt, 1};
+  msg.options = span<const OptionView>{&opt, 1};
   msg.payload = body;
 
   auto [buf, size, ec] = DoSerialize(msg);
@@ -286,14 +286,14 @@ TEST(Serialize, RoundTrip_WithOptionsAndPayload) {
   out_msg.code = codes::kGet;
   out_msg.message_id = 0xABCDu;
   out_msg.token = tok;
-  out_msg.options = std::span<const OptionView>{&opt, 1};
+  out_msg.options = span<const OptionView>{&opt, 1};
   out_msg.payload = body;
 
   auto [buf, size, ec] = DoSerialize(out_msg);
   ASSERT_EQ(ec, SerializeError::kOk);
 
   Message in_msg{};
-  ASSERT_EQ(Deserialize(std::span<const std::byte>{buf.data(), size}, in_msg),
+  ASSERT_EQ(Deserialize(span<const std::byte>{buf.data(), size}, in_msg),
             DeserializeError::kOk);
 
   EXPECT_EQ(in_msg.type, MessageType::kNon);
@@ -353,7 +353,7 @@ TEST(MessageBuilder, AllOptionTypes) {
       .AddOption(5u, std::monostate{})
       .AddOption(7u, uint32_t{5683u})
       .AddOption(11u, std::string_view{"test"})
-      .AddOption(4u, std::span<const std::byte>{opaque_bytes});
+      .AddOption(4u, span<const std::byte>{opaque_bytes});
 
   const auto msg = b.Build();
   ASSERT_EQ(msg.options.size(), 4u);
@@ -361,7 +361,7 @@ TEST(MessageBuilder, AllOptionTypes) {
   // After sort: 4, 5, 7, 11
   EXPECT_EQ(msg.options[0].number, 4u);
   EXPECT_TRUE(
-      std::holds_alternative<std::span<const std::byte>>(msg.options[0].value));
+      std::holds_alternative<span<const std::byte>>(msg.options[0].value));
   EXPECT_EQ(msg.options[1].number, 5u);
   EXPECT_TRUE(std::holds_alternative<std::monostate>(msg.options[1].value));
   EXPECT_EQ(msg.options[2].number, 7u);
@@ -400,7 +400,7 @@ TEST(MessageBuilder, RoundTripViaBuilder) {
   ASSERT_EQ(ec, SerializeError::kOk);
 
   Message in_msg{};
-  ASSERT_EQ(Deserialize(std::span<const std::byte>{buf.data(), size}, in_msg),
+  ASSERT_EQ(Deserialize(span<const std::byte>{buf.data(), size}, in_msg),
             DeserializeError::kOk);
 
   EXPECT_EQ(in_msg.type, MessageType::kCon);

@@ -4,7 +4,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <span>
+
+#include "coap_pp/util/span.hpp"
 
 #include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/serialize.hpp"
@@ -91,7 +92,7 @@ class Messenger : private TransportReceiverIF {
  private:
   // TransportReceiverIF — called by the transport on datagram arrival.
   void OnReceive(const Endpoint& sender,
-                 std::span<const std::byte> data) override;
+                 span<const std::byte> data) override;
 
   void AckPending(uint16_t message_id);
 

@@ -61,7 +61,7 @@ void PosixUdpTransport::Stop() {
 }
 
 TransportError PosixUdpTransport::Send(const Endpoint& destination,
-                                       std::span<const std::byte> data) {
+                                       span<const std::byte> data) {
   const auto& addr = destination.To<sockaddr_in>();
   const auto n =
       ::sendto(fd_, data.data(), data.size(), 0,
@@ -114,7 +114,7 @@ void PosixUdpTransport::ReceiveLoop() {
     if (receiver_) {
       receiver_->OnReceive(
           sender,
-          std::span<const std::byte>{buf.data(), static_cast<std::size_t>(n)});
+          span<const std::byte>{buf.data(), static_cast<std::size_t>(n)});
     }
   }
 }

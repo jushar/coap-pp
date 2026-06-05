@@ -2,9 +2,9 @@
 #define COAP_PP_PDU_DESERIALIZE_HPP
 
 #include <cstdint>
-#include <span>
 
 #include "coap_pp/pdu/message.hpp"
+#include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
 
@@ -21,7 +21,7 @@ enum class DeserializeError : uint8_t {
 // Deserialize a CoAP datagram into `out`. On success returns
 // DeserializeError::kOk; `out` then holds non-owning views into `raw`. `raw`
 // MUST remain valid for as long as `out` is used.
-[[nodiscard]] DeserializeError Deserialize(std::span<const std::byte> raw,
+[[nodiscard]] DeserializeError Deserialize(span<const std::byte> raw,
                                            Message& out);
 
 }  // namespace coap_pp

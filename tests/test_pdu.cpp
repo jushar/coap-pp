@@ -239,7 +239,7 @@ TEST(PduDeserialize, ParsesOpaqueOption) {
 
   auto it = msg.options.begin();
   EXPECT_EQ(it->number, 4u);
-  const auto val = std::get<std::span<const std::byte>>(it->value);
+  const auto val = std::get<span<const std::byte>>(it->value);
   ASSERT_EQ(val.size(), 4u);
   EXPECT_EQ(val[0], std::byte{0xDE});
   EXPECT_EQ(val[3], std::byte{0xEF});
@@ -259,7 +259,7 @@ TEST(PduDeserialize, ParsesOptionExtendedDelta13) {
   auto it = msg.options.begin();
   ASSERT_NE(it, msg.options.end());
   EXPECT_EQ(it->number, 13u);
-  EXPECT_TRUE(std::get<std::span<const std::byte>>(it->value).empty());
+  EXPECT_TRUE(std::get<span<const std::byte>>(it->value).empty());
 }
 
 // ── Options + payload
