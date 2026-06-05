@@ -17,6 +17,7 @@
 
 #include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/option.hpp"
+#include "coap_pp/serde/deserialize.hpp"
 #include "coap_pp/transport/endpoint.hpp"
 #include "coap_pp/util/span.hpp"
 
@@ -76,6 +77,11 @@ struct Request {
   // NOTE: options and payload are non-owning views into the receive buffer —
   // copy any data you need before the handler returns.
   AsyncResponse MakeAsync() const;
+
+  template <typename T, typename Deserializer>
+  std::optional<T> Body() const {
+    return Deserialize<T, Deserializer>(payload, Deserializer{});
+  }
 
  private:
   CoapServer* server_;

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 cmake_minimum_required(VERSION 3.30)
-project(coap-pp VERSION 0.1.0 LANGUAGES CXX)
+project(coap-pp VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -58,6 +58,32 @@ add_library(coap-pp-transport-udp-ip-slip STATIC
 target_link_libraries(coap-pp-transport-udp-ip-slip PUBLIC coap-pp Threads::Threads PRIVATE coap-pp-warnings)
 target_compile_features(coap-pp-transport-udp-ip-slip PUBLIC cxx_std_20)
 
+# nanopb serde
+option(COAP_PP_BUILD_SERDE_NANOPB "Build nanopb-based serde support" ON)
+if(COAP_PP_BUILD_SERDE_NANOPB)
+    include(FetchContent)
+    FetchContent_Declare(
+        nanopb
+        GIT_REPOSITORY https://github.com/nanopb/nanopb.git
+        GIT_TAG        0.4.9.1
+        FIND_PACKAGE_ARGS
+    )
+    FetchContent_MakeAvailable(nanopb)
+
+    if(DEFINED nanopb_SOURCE_DIR AND NOT COMMAND NANOPB_GENERATE_CPP)
+        set(NANOPB_GENERATOR_SOURCE_DIR ${nanopb_SOURCE_DIR}/generator)
+        include(${nanopb_SOURCE_DIR}/extra/FindNanopb.cmake)
+    endif()
+
+    add_library(coap-pp-serde-nanopb INTERFACE)
+    target_include_directories(coap-pp-serde-nanopb
+        INTERFACE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+    target_link_libraries(coap-pp-serde-nanopb INTERFACE coap-pp protobuf-nanopb-static)
+endif()
+
 # POSIX transport + examples (Linux / macOS only)
 if(UNIX)
     option(COAP_PP_BUILD_POSIX_TRANSPORT "Build the POSIX UDP transport" ON)
@@ -66,7 +92,7 @@ if(UNIX)
         add_library(coap-pp-transport-posix STATIC
             src/coap_pp_transport_posix/udp_transport.cpp
         )
-        target_link_libraries(coap-pp-transport-posix PUBLIC coap-pp Threads::Threads PRIVATE coap-pp-warnings)
+        target_link_libraries(coap-pp-transport-posix PUBLIC coap-pp Threads::Threads PRIVATE coap-pp-warnings coap-pp-serde-nanopb)
         target_compile_features(coap-pp-transport-posix PUBLIC cxx_std_20)
 
         option(COAP_PP_BUILD_EXAMPLES "Build example programs" ON)
