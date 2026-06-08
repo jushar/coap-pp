@@ -127,6 +127,56 @@ UdpIpSlipTransport transport{serial, {192, 168, 1, 1}, 5683};
 auto ep = UdpIpSlipTransport::MakeEndpoint({192, 168, 1, 2}, 5683);
 ```
 
+## NanoPB deserialization (`coap-pp-serde-nanopb`)
+
+The `coap-pp-serde-nanopb` layer automatically deserializes protobuf payloads into typed request objects using [NanoPB](https://jpa.kapsi.fi/nanopb/).
+
+**1. Specialize `NanopbFields` for your message type:**
+
+```cpp
+#include "coap_pp_serde_nanopb/router.hpp"
+#include "my_message.pb.h"
+
+template <>
+struct coap_pp::NanopbFields<MyMessage> {
+    static constexpr const pb_msgdesc_t* kFields = MyMessage_fields;
+};
+```
+
+**2. Write a typed handler — the payload is decoded before your handler runs:**
+
+```cpp
+HandlerResult HandleMyMessage(const Request<MyMessage>& request) {
+    const MyMessage& msg = request.Body();
+    // use msg.field_name ...
+    return Response{codes::kContent, payload, 0u};
+}
+```
+
+If decoding fails, the server automatically responds with `4.00 Bad Request` before calling your handler.
+
+**3. Register routes with `NanopbRouter` instead of the plain `Router`:**
+
+```cpp
+static std::array<Route, 1> routes{{
+    {codes::kPost, "/my-endpoint",
+     NanopbRouter::Bind<&MyController::HandleMyMessage>(this)},
+}};
+static NanopbRouter router{"", routes};
+server.AddRouter(router);
+```
+
+Lambdas are also supported:
+
+```cpp
+NanopbRouter::Bind([](const Request<MyMessage>& request) {
+    std::cout << request.Body().name << "\n";
+    return Response{codes::kContent, payload, 0u};
+})
+```
+
+See [examples/hello_world.cpp](examples/hello_world.cpp) for a complete working example (`HandleWithPayload` / `/hello-world-pb` and the `/hello-lambda-pb` lambda route).
+
 ## Async responses
 
 Handlers can defer their reply — useful for slow operations. The server sends an empty ACK immediately (stopping CON retransmissions) and the handler delivers the real response later from any thread:

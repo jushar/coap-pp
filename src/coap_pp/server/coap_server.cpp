@@ -36,12 +36,12 @@ std::size_t JoinUriPath(const OptionsView& opts, char* buf,
 
 }  // namespace
 
-CoapServer::CoapServer(Messenger& messenger, span<Router*> routers)
+CoapServer::CoapServer(Messenger& messenger, span<RouterBase*> routers)
     : messenger_{messenger}, routers_{routers} {
   messenger_.SetHandler(*this);
 }
 
-void CoapServer::AddRouter(Router& router) {
+void CoapServer::AddRouter(RouterBase& router) {
   if (router_count_ >= routers_.size()) {
     detail::Log<LogLevel::kError>("router table full, ignoring router");
     return;
@@ -66,7 +66,7 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   bool path_matched = false;
   const Route* found_route = nullptr;
   for (std::size_t i = 0; i < router_count_; ++i) {
-    const Router& router = *routers_[i];
+    const RouterBase& router = *routers_[i];
     const auto base = router.GetBasePath();
     if (request_path.size() < base.size() ||
         request_path.substr(0, base.size()) != base)
@@ -93,8 +93,8 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
     return;
   }
 
-  Request req{msg.code, msg.options, msg.payload,    *this,
-              sender,   msg.type,    msg.message_id, msg.token};
+  RawRequest req{msg.code, msg.options, msg.payload,    *this,
+                sender,   msg.type,    msg.message_id, msg.token};
   HandlerResult result = found_route->handler(req);
 
   if (std::holds_alternative<Response>(result)) {
