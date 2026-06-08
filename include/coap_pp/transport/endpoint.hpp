@@ -6,8 +6,8 @@
 #define COAP_PP_TRANSPORT_ENDPOINT_HPP
 
 #include <array>
-#include <bit>
 #include <cstddef>
+#include <cstring>
 
 namespace coap_pp {
 
@@ -22,18 +22,17 @@ struct Endpoint {
   static constexpr std::size_t kStorageSize = 32;
   std::array<std::byte, kStorageSize> storage{};
 
-  bool operator==(const Endpoint&) const = default;
+  bool operator==(const Endpoint& other) const {
+    return storage == other.storage;
+  }
 
   template <typename T>
-  static constexpr Endpoint From(const T& addr) {
+  static Endpoint From(const T& addr) {
     static_assert(sizeof(T) <= kStorageSize,
                   "Address does not fit into endpoint");
 
     Endpoint ep{};
-    const auto bytes = std::bit_cast<std::array<std::byte, sizeof(T)>>(addr);
-    for (std::size_t i = 0; i < sizeof(T); ++i) {
-      ep.storage[i] = bytes[i];
-    }
+    std::memcpy(ep.storage.data(), &addr, sizeof(T));
     return ep;
   }
 

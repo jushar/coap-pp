@@ -137,6 +137,9 @@ class OptionsIterator {
   bool operator==(const OptionsIterator& other) const {
     return cursor_ == other.cursor_;
   }
+  bool operator!=(const OptionsIterator& other) const {
+    return cursor_ != other.cursor_;
+  }
 
  private:
   void DeserializeCurrent();

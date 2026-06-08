@@ -36,7 +36,7 @@ struct Code {
     return Code{static_cast<uint8_t>((c << 5u) | (d & 0x1Fu))};
   }
 
-  bool operator==(const Code&) const = default;
+  bool operator==(const Code& other) const { return value == other.value; }
 };
 
 // Well-known codes from RFC 7252 §12.1 and §12.1.2.

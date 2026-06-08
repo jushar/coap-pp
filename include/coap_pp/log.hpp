@@ -38,7 +38,9 @@ inline constexpr LogLevel kMinLogLevel =
 void VLog(LogLevel level, const char* fmt, va_list args);
 
 template <LogLevel Level>
+#if defined(__GNUC__)
 [[gnu::format(printf, 1, 2)]]
+#endif
 inline void Log(const char* fmt, ...) {
   if constexpr (Level >= kMinLogLevel) {
     va_list args;

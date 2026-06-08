@@ -68,7 +68,9 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   for (std::size_t i = 0; i < router_count_; ++i) {
     const Router& router = *routers_[i];
     const auto base = router.GetBasePath();
-    if (!request_path.starts_with(base)) continue;
+    if (request_path.size() < base.size() ||
+        request_path.substr(0, base.size()) != base)
+      continue;
     const auto suffix = request_path.substr(base.size());
     for (const auto& route : router.GetRoutes()) {
       if (route.path != suffix) continue;
