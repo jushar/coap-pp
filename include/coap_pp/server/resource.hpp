@@ -17,7 +17,6 @@
 
 #include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/option.hpp"
-#include "coap_pp/serde/deserialize.hpp"
 #include "coap_pp/transport/endpoint.hpp"
 #include "coap_pp/util/span.hpp"
 
@@ -46,14 +45,15 @@ class AsyncResponse {
  public:
   AsyncResponse() = default;  // null state; Send() is a no-op
 
-  // Routing context is populated by Request::MakeAsync() — not for direct use.
+  // Routing context is populated by RawRequest::MakeAsync() — not for direct
+  // use.
   AsyncResponse(CoapServer& server, const Endpoint& endpoint,
                 MessageType req_type, uint16_t req_mid, const Token& token);
 
   void Send(const Response& resp);
 
  private:
-  friend class CoapServer;  // so Send() can call CoapServer::SendAsyncResponse
+  friend class CoapServer;
   CoapServer* server_{nullptr};
   Endpoint endpoint_{};
   Token token_{};
@@ -61,29 +61,71 @@ class AsyncResponse {
   MessageType req_type_{};
 };
 
-// Inbound request presented to a resource handler.
-struct Request {
+// Raw inbound request as received from the network.
+// Handlers registered via Router<Deser>::Bind<MemFn>(self) receive this type
+// when no PayloadType is specified.
+//
+// NOTE: options and payload are non-owning views into the receive buffer —
+// copy any data you need before the handler returns.
+struct RawRequest {
   Code method;
   OptionsView options;
   span<const std::byte> payload;
 
   // Populated by CoapServer — not for direct construction by application code.
-  Request(Code method, OptionsView options, span<const std::byte> payload,
-          CoapServer& server, const Endpoint& sender, MessageType req_type,
-          uint16_t req_mid, const Token& token);
+  RawRequest(Code method, OptionsView options, span<const std::byte> payload,
+             CoapServer& server, const Endpoint& sender, MessageType req_type,
+             uint16_t req_mid, const Token& token);
 
   // Creates an AsyncResponse preloaded with the routing info for this request.
   // Store the returned handle; return it (or a copy) from the handler.
-  // NOTE: options and payload are non-owning views into the receive buffer —
-  // copy any data you need before the handler returns.
   AsyncResponse MakeAsync() const;
 
-  template <typename T, typename Deserializer>
-  std::optional<T> Body() const {
-    return Deserialize<T, Deserializer>(payload, Deserializer{});
+ private:
+  template <typename>
+  friend struct Request;  // Request<T> copies routing context from RawRequest
+  template <typename>
+  friend class Router;  // Router<Deser>::Bind may need routing context
+
+  CoapServer* server_;
+  Endpoint sender_;
+  MessageType req_type_;
+  uint16_t req_mid_;
+  Token token_;
+};
+
+// Typed inbound request — payload already deserialized to T.
+// Handlers registered via Router<Deser>::Bind<MemFn, T>(self) receive this
+// type.  If deserialization fails the server returns 4.00 Bad Request and the
+// handler is not called.
+template <typename T>
+struct Request {
+  Code method;
+  OptionsView options;
+  span<const std::byte> payload;
+
+  const T& Body() const { return body_; }
+
+  AsyncResponse MakeAsync() const {
+    return AsyncResponse{*server_, sender_, req_type_, req_mid_, token_};
   }
 
  private:
+  template <typename>
+  friend class Router;  // Router<Deser>::Bind constructs Request<T>
+
+  Request(const RawRequest& base, T body)
+      : method(base.method),
+        options(base.options),
+        payload(base.payload),
+        body_(std::move(body)),
+        server_(base.server_),
+        sender_(base.sender_),
+        req_type_(base.req_type_),
+        req_mid_(base.req_mid_),
+        token_(base.token_) {}
+
+  T body_;
   CoapServer* server_;
   Endpoint sender_;
   MessageType req_type_;
@@ -98,20 +140,11 @@ using HandlerResult = std::variant<Response, AsyncResponse>;
 // Stored via std::function by default; set COAP_PP_USE_INPLACE_FUNCTION (CMake
 // option) to use a fixed-buffer inplace_function instead (no heap allocation).
 #ifdef COAP_PP_USE_INPLACE_FUNCTION
-using RequestHandler = inplace_function<HandlerResult(const Request&),
+using RequestHandler = inplace_function<HandlerResult(const RawRequest&),
                                         COAP_PP_INPLACE_FUNCTION_CAPACITY>;
 #else
-using RequestHandler = std::function<HandlerResult(const Request&)>;
+using RequestHandler = std::function<HandlerResult(const RawRequest&)>;
 #endif
-
-// Binds a const member function to an instance, producing a RequestHandler.
-// Usage: BindHandler<&MyController::HandleFoo>(this)
-template <auto MemFn, typename T>
-RequestHandler BindHandler(T* self) {
-  return [self](const Request& req) -> HandlerResult {
-    return (self->*MemFn)(req);
-  };
-}
 
 }  // namespace coap_pp
 

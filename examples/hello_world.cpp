@@ -9,11 +9,8 @@
 
 #include "coap_pp/log.hpp"
 #include "coap_pp/messaging/messenger.hpp"
-#include "coap_pp/pdu/message.hpp"
 #include "coap_pp/server/coap_server.hpp"
-#include "coap_pp/server/resource.hpp"
-#include "coap_pp/server/router.hpp"
-#include "coap_pp_serde_nanopb/nanopb_deserialize.hpp"
+#include "coap_pp_serde_nanopb/router.hpp"
 #include "coap_pp_transport_posix/udp_transport.hpp"
 #include "hello_world.pb.h"
 #include "pb.h"
@@ -33,7 +30,7 @@ struct coap_pp::NanopbFields<HelloRequest> {
 
 class ExampleController final {
  private:
-  HandlerResult HandleHello(const Request&) const {
+  HandlerResult HandleHello(const RawRequest&) const {
     return Response{codes::kContent,
                     as_bytes(span{kHelloText.data(), kHelloText.size()}), 0u};
   }
@@ -42,7 +39,7 @@ class ExampleController final {
   // actual response 2 seconds later via AsyncResponse::Send().
   // For CON requests the server sends an empty ACK right away to stop
   // client retransmissions; the deferred reply arrives as a new CON.
-  HandlerResult HandleSlow(const Request& req) const {
+  HandlerResult HandleSlow(const RawRequest& req) const {
     auto async = req.MakeAsync();
     std::thread([a = async]() mutable {
       std::this_thread::sleep_for(2s);
@@ -52,9 +49,8 @@ class ExampleController final {
     return async;
   }
 
-  HandlerResult HandleWithPayload(const Request& request) const {
-    std::cout << "Got payload: { name = "
-              << request.Body<HelloRequest, NanopbDeserializer>()->name << " }"
+  HandlerResult HandleWithPayload(const Request<HelloRequest>& request) const {
+    std::cout << "Got payload: { name = " << request.Body().name << " }"
               << std::endl;
 
     return Response{codes::kContent,
@@ -62,16 +58,17 @@ class ExampleController final {
   }
 
  public:
-  Router& BuildRouter() {
+  RouterBase& BuildRouter() {
     static std::array<Route, 3> routes{{
         {codes::kGet, "/hello",
-         BindHandler<&ExampleController::HandleHello>(this)},
+         NanopbRouter::Bind<&ExampleController::HandleHello>(this)},
         {codes::kGet, "/slow",
-         BindHandler<&ExampleController::HandleSlow>(this)},
+         NanopbRouter::Bind<&ExampleController::HandleSlow>(this)},
         {codes::kPost, "/hello-world-pb",
-         BindHandler<&ExampleController::HandleWithPayload>(this)},
+         NanopbRouter::Bind<&ExampleController::HandleWithPayload,
+                            HelloRequest>(this)},
     }};
-    static Router router{"", routes};
+    static NanopbRouter router{"", routes};
     return router;
   }
 };
@@ -90,7 +87,7 @@ int main() {
   Messenger messenger{transport, con_pool};
 
   // Server
-  std::array<Router*, 4> router_storage{};
+  std::array<RouterBase*, 4> router_storage{};
   CoapServer server{messenger, router_storage};
 
   // REST controllers

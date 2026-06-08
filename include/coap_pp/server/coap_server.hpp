@@ -19,25 +19,29 @@ namespace coap_pp {
 // objects.
 //
 // Usage:
-//   std::array<Router*, 4> router_storage{};
+//   std::array<RouterBase*, 4> router_storage{};
 //   CoapServer server{messenger, router_storage};
 //
-//   static const std::array<Route, 1> kRoutes = {{{codes::kGet, "/temperature",
-//   handle_temp}}}; Router api{"/api", kRoutes}; server.AddRouter(api);
+//   using MyRouter = Router<NanopbDeserializer>;
+//   static const std::array<Route, 1> kRoutes = {{{codes::kPost, "/data",
+//     MyRouter::Bind<&Ctrl::HandleData, DataProto>(ctrl)}}};
+//   MyRouter api{"/api", kRoutes};
+//   server.AddRouter(api);
 //
 //   // CON requests automatically get piggybacked ACK responses.
 //   // Unregistered paths -> 4.04 Not Found.
 //   // Path matched but wrong method -> 4.05 Method Not Allowed.
+//   // Deserialization failure -> 4.00 Bad Request.
 //   // Async handlers return AsyncResponse from req.MakeAsync() instead of
 //   Response.
 class CoapServer : private MessageHandlerIF {
  public:
   // Calls messenger.SetHandler(*this) immediately.
-  // routers is caller-provided storage for Router pointers.
-  CoapServer(Messenger& messenger, span<Router*> routers);
+  // routers is caller-provided storage for RouterBase pointers.
+  CoapServer(Messenger& messenger, span<RouterBase*> routers);
 
   // Mount a router. Silently no-ops when the routers span is full.
-  void AddRouter(Router& router);
+  void AddRouter(RouterBase& router);
 
  private:
   // MessageHandlerIF
@@ -59,7 +63,7 @@ class CoapServer : private MessageHandlerIF {
   friend class AsyncResponse;
 
   Messenger& messenger_;
-  span<Router*> routers_;
+  span<RouterBase*> routers_;
   std::size_t router_count_{0};
   uint16_t next_mid_{1u};
 };

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COAP_PP_SERDE_NANOPB_DESERIALIZER_HPP
+#define COAP_PP_SERDE_NANOPB_DESERIALIZER_HPP
 
 #include <pb_decode.h>
 
@@ -6,7 +7,6 @@
 #include <optional>
 
 #include "coap_pp/util/span.hpp"
-
 #include "pb.h"
 
 namespace coap_pp {
@@ -29,3 +29,5 @@ struct NanopbDeserializer final {
 };
 
 }  // namespace coap_pp
+
+#endif
