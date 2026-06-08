@@ -7,6 +7,7 @@
 
 #include <string_view>
 
+#include "coap_pp/log.hpp"
 #include "coap_pp/serde/deserialize.hpp"
 #include "coap_pp/server/resource.hpp"
 #include "coap_pp/util/span.hpp"
@@ -107,7 +108,10 @@ class Router : public RouterBase {
       return
           [fn = std::forward<Fn>(fn)](const RawRequest& req) -> HandlerResult {
             auto body = Deserializer::template Deserialize<T>(req.payload);
-            if (!body) return Response{codes::kBadRequest};
+            if (!body) {
+              detail::Log<LogLevel::kWarning>("deserialization failed");
+              return Response{codes::kBadRequest};
+            }
             return fn(Request<T>{req, std::move(*body)});
           };
     }
