@@ -131,7 +131,26 @@ auto ep = UdpIpSlipTransport::MakeEndpoint({192, 168, 1, 2}, 5683);
 
 The `coap-pp-serde-nanopb` layer automatically deserializes protobuf payloads into typed request objects using [NanoPB](https://jpa.kapsi.fi/nanopb/).
 
-**1. Specialize `NanopbFields` for your message type:**
+**1. Generate `NanopbFields` specializations from your proto file:**
+
+Use `coap_pp_nanopb_generate_cpp` in your `CMakeLists.txt` instead of the bare `nanopb_generate_cpp`. It runs the bundled `protoc-gen-coap_pp_fields` plugin to produce a `<name>.coap_pp_fields.hpp` header alongside the usual `<name>.pb.h`:
+
+```cmake
+coap_pp_nanopb_generate_cpp(PROTO_SRCS PROTO_HDRS PROTO_FIELDS my_message.proto)
+
+add_executable(my_app main.cpp ${PROTO_SRCS} ${PROTO_FIELDS})
+target_include_directories(my_app PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(my_app PRIVATE coap-pp-serde-nanopb)
+```
+
+Then include the generated header — it contains a `NanopbFields` specialization for every message in the file:
+
+```cpp
+#include "my_message.coap_pp_fields.hpp"  // auto-generated; also includes my_message.pb.h
+```
+
+<details>
+<summary>Manual specialization (without the plugin)</summary>
 
 ```cpp
 #include "coap_pp_serde_nanopb/router.hpp"
@@ -142,6 +161,7 @@ struct coap_pp::NanopbFields<MyMessage> {
     static constexpr const pb_msgdesc_t* kFields = MyMessage_fields;
 };
 ```
+</details>
 
 **2. Write a typed handler — the payload is decoded before your handler runs:**
 
@@ -204,3 +224,5 @@ FetchContent_MakeAvailable(coap-pp)
 
 target_link_libraries(my-target PRIVATE coap-pp)
 ```
+
+When `COAP_PP_BUILD_SERDE_NANOPB` is `ON` (the default), `FetchContent_MakeAvailable` also defines the `coap_pp_nanopb_generate_cpp` CMake function. See the [NanoPB deserialization](#nanopb-deserialization-coap-pp-serde-nanopb) section above for usage.

@@ -75,6 +75,8 @@ if(COAP_PP_BUILD_SERDE_NANOPB)
         include(${nanopb_SOURCE_DIR}/extra/FindNanopb.cmake)
     endif()
 
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/coap_pp_serde_nanopb/NanopbGenerate.cmake)
+
     add_library(coap-pp-serde-nanopb INTERFACE)
     target_include_directories(coap-pp-serde-nanopb
         INTERFACE

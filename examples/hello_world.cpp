@@ -12,8 +12,7 @@
 #include "coap_pp/server/coap_server.hpp"
 #include "coap_pp_serde_nanopb/router.hpp"
 #include "coap_pp_transport_posix/udp_transport.hpp"
-#include "hello_world.pb.h"
-#include "pb.h"
+#include "hello_world.coap_pp_fields.hpp"
 
 using namespace std::chrono_literals;
 using namespace coap_pp;
@@ -22,11 +21,6 @@ static std::atomic<bool> g_running{true};
 
 static constexpr std::string_view kHelloText = "Hello, CoAP World!";
 static constexpr std::string_view kSlowText = "slow response";
-
-template <>
-struct coap_pp::NanopbFields<HelloRequest> {
-  static constexpr const pb_msgdesc_t* kFields = HelloRequest_fields;
-};
 
 class ExampleController final {
  private:
@@ -68,11 +62,11 @@ class ExampleController final {
          NanopbRouter::Bind<&ExampleController::HandleWithPayload>(this)},
         {codes::kPost, "/hello-lambda-pb",
          NanopbRouter::Bind([](const Request<HelloRequest>& request) {
-           std::cout << "Got payload (lambda): { name = "
-                     << request.Body().name << " }" << std::endl;
-           return Response{
-               codes::kContent,
-               as_bytes(span{kHelloText.data(), kHelloText.size()}), 0u};
+           std::cout << "Got payload (lambda): { name = " << request.Body().name
+                     << " }" << std::endl;
+           return Response{codes::kContent,
+                           as_bytes(span{kHelloText.data(), kHelloText.size()}),
+                           0u};
          })},
     }};
     static NanopbRouter router{"", routes};
