@@ -31,6 +31,7 @@ async def main():
         ("POST", "/hello",          None),                                                        # 4.05 Method Not Allowed
         ("GET",  "/other",          None),                                                        # 4.04 Not Found
         ("POST", "/hello-world-pb", hello_world_pb2.HelloRequest(name="World").SerializeToString()),  # 2.05 Content
+        ("POST", "/hello-lambda-pb", hello_world_pb2.HelloRequest(name="World").SerializeToString()),  # 2.05 Content
     ]
 
     for method, path, payload in requests:

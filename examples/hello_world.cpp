@@ -59,14 +59,21 @@ class ExampleController final {
 
  public:
   RouterBase& BuildRouter() {
-    static std::array<Route, 3> routes{{
+    static std::array<Route, 4> routes{{
         {codes::kGet, "/hello",
          NanopbRouter::Bind<&ExampleController::HandleHello>(this)},
         {codes::kGet, "/slow",
          NanopbRouter::Bind<&ExampleController::HandleSlow>(this)},
         {codes::kPost, "/hello-world-pb",
-         NanopbRouter::Bind<&ExampleController::HandleWithPayload,
-                            HelloRequest>(this)},
+         NanopbRouter::Bind<&ExampleController::HandleWithPayload>(this)},
+        {codes::kPost, "/hello-lambda-pb",
+         NanopbRouter::Bind([](const Request<HelloRequest>& request) {
+           std::cout << "Got payload (lambda): { name = "
+                     << request.Body().name << " }" << std::endl;
+           return Response{
+               codes::kContent,
+               as_bytes(span{kHelloText.data(), kHelloText.size()}), 0u};
+         })},
     }};
     static NanopbRouter router{"", routes};
     return router;

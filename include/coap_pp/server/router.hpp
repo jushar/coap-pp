@@ -6,11 +6,11 @@
 #define COAP_PP_SERVER_ROUTER_HPP
 
 #include <string_view>
-#include <type_traits>
 
 #include "coap_pp/serde/deserialize.hpp"
 #include "coap_pp/server/resource.hpp"
 #include "coap_pp/util/span.hpp"
+#include "coap_pp/util/type_traits.hpp"
 
 namespace coap_pp {
 
@@ -41,47 +41,76 @@ class RouterBase {
   span<const Route> routes_;
 };
 
+namespace detail {
+
+// Extracts T from Request<T>.  Left undefined for non-Request types so that
+// misuse results in a clear substitution failure.
+template <typename>
+struct RequestPayload;
+
+template <typename T>
+struct RequestPayload<Request<T>> {
+  using type = T;
+};
+
+}  // namespace detail
+
 // Groups a set of routes under a common base path and a shared Deserializer.
 // All storage is caller-provided; no heap allocation.
+//
+// The payload type for each route is deduced from the handler's first argument:
+//   const RawRequest&       – no deserialization, raw bytes available
+//   const Request<T>&       – payload is deserialized to T before the handler
+//                             is called; deserialization failure → 4.00
 //
 // Usage:
 //   using MyRouter = Router<NanopbDeserializer>;
 //
-//   static const std::array<Route, 2> kRoutes = {{
-//     {codes::kGet,  "/hello", MyRouter::Bind<&Ctrl::HandleHello>(ctrl)},
-//     {codes::kPost, "/data",  MyRouter::Bind<&Ctrl::HandleData,
-//     DataProto>(ctrl)},
-//   }};
-//   MyRouter router{"/api", kRoutes};
+//   // Member function — type deduced from signature:
+//   MyRouter::Bind<&Ctrl::HandleRaw>(ctrl)       // takes const RawRequest&
+//   MyRouter::Bind<&Ctrl::HandleData>(ctrl)      // takes const Request<Data>&
+//
+//   // Lambda / free function — type deduced from first parameter:
+//   MyRouter::Bind([](const RawRequest& req) { ... })
+//   MyRouter::Bind([](const Request<Data>& req) { ... })
 template <typename Deserializer = NoopDeserializer>
 class Router : public RouterBase {
  public:
   using RouterBase::RouterBase;
 
-  // Bind a const member function, producing a RequestHandler.
-  //
-  // Omit PayloadType (or pass void) for handlers that do not need a
-  // deserialized body — the handler receives a RawRequest.
-  //
-  // Supply a concrete PayloadType to enable automatic deserialization via the
-  // router's Deserializer.  A failure yields 4.00 Bad Request; the handler
-  // receives Request<PayloadType>.
-  //
-  // Handler signatures:
-  //   HandlerResult Handler(const RawRequest& req)         // no payload
-  //   HandlerResult Handler(const Request<MyProto>& req)   // typed payload
-  template <auto MemFn, typename PayloadType = void, typename Obj>
+  // Bind a const member function pointer.
+  // The handler's first argument type determines the deserialization mode.
+  template <auto MemFn, typename Obj>
   static RequestHandler Bind(Obj* self) {
-    return [self](const RawRequest& req) -> HandlerResult {
-      if constexpr (std::is_void_v<PayloadType>) {
-        return (self->*MemFn)(req);
-      } else {
-        auto body =
-            Deserializer::template Deserialize<PayloadType>(req.payload);
-        if (!body) return Response{codes::kBadRequest};
-        return (self->*MemFn)(Request<PayloadType>{req, std::move(*body)});
-      }
-    };
+    using Arg0 = detail::first_arg_t<decltype(MemFn)>;
+    return BindImpl(
+        [self](Arg0 arg) -> HandlerResult { return (self->*MemFn)(arg); });
+  }
+
+  // Bind any callable (lambda, free function pointer, functor).
+  // The callable's first parameter type determines the deserialization mode.
+  template <typename Fn>
+  static RequestHandler Bind(Fn&& fn) {
+    return BindImpl(std::forward<Fn>(fn));
+  }
+
+ private:
+  template <typename Fn>
+  static RequestHandler BindImpl(Fn&& fn) {
+    using RawFn = std::remove_cvref_t<Fn>;
+    using Arg = std::remove_cvref_t<detail::first_arg_t<RawFn>>;
+    if constexpr (std::is_same_v<Arg, RawRequest>) {
+      return [fn = std::forward<Fn>(fn)](
+                 const RawRequest& req) -> HandlerResult { return fn(req); };
+    } else {
+      using T = typename detail::RequestPayload<Arg>::type;
+      return
+          [fn = std::forward<Fn>(fn)](const RawRequest& req) -> HandlerResult {
+            auto body = Deserializer::template Deserialize<T>(req.payload);
+            if (!body) return Response{codes::kBadRequest};
+            return fn(Request<T>{req, std::move(*body)});
+          };
+    }
   }
 };
 
