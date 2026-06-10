@@ -13,7 +13,7 @@ namespace coap_pp::detail {
 // Handles non-mutable lambdas/functors (const operator()), mutable lambdas,
 // member function pointers, and free function pointers.
 template <typename F>
-struct FirstArg : FirstArg<decltype(&std::remove_cvref_t<F>::operator())> {};
+struct FirstArg : FirstArg<decltype(&std::decay_t<F>::operator())> {};
 
 template <typename R, typename C, typename A0, typename... An>
 struct FirstArg<R (C::*)(A0, An...) const> {

@@ -98,8 +98,8 @@ class Router : public RouterBase {
  private:
   template <typename Fn>
   static RequestHandler BindImpl(Fn&& fn) {
-    using RawFn = std::remove_cvref_t<Fn>;
-    using Arg = std::remove_cvref_t<detail::first_arg_t<RawFn>>;
+    using RawFn = std::decay_t<Fn>;
+    using Arg = std::decay_t<detail::first_arg_t<RawFn>>;
     if constexpr (std::is_same_v<Arg, RawRequest>) {
       return [fn = std::forward<Fn>(fn)](
                  const RawRequest& req) -> HandlerResult { return fn(req); };
