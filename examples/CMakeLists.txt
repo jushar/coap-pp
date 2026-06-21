@@ -7,4 +7,4 @@ add_executable(coap-hello-world hello_world.cpp ${PROTO_SRCS} ${PROTO_FIELDS})
 
 target_include_directories(coap-hello-world PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(coap-hello-world PRIVATE coap-pp-transport-posix coap-pp-serde-nanopb)
-target_compile_features(coap-hello-world PRIVATE cxx_std_20)
+target_compile_features(coap-hello-world PRIVATE cxx_std_17)

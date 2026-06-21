@@ -30,6 +30,11 @@ struct WireResponse {
   ContentFormat content_format{ContentFormat::kNoContentFormat};
 };
 
+// Callable passed to every RequestHandler. Call it (exactly once) to deliver
+// the response. Takes WireResponse by value so the pipeline can move the
+// callback through without copying.
+using WireSender = function<void(const WireResponse&)>;
+
 // Typed outbound response returned by a resource handler.
 // payload and content_format are optional; leave at defaults to send code-only
 // responses.
@@ -41,6 +46,12 @@ struct Response {
   T payload{};
   ContentFormat content_format{ContentFormat::kNoContentFormat};
 };
+
+// Deduction guides — required in C++17 (aggregate CTAD is a C++20 feature).
+template <typename T>
+Response(Code, T, ContentFormat) -> Response<T>;
+template <typename T>
+Response(Code, T) -> Response<T>;
 
 // ── AsyncResponseBase
 // ───────────────────────────────────────────────────────── Non-template base
@@ -97,8 +108,10 @@ class AsyncResponse : public AsyncResponseBase {
 
   void Send(const WireResponse& resp) { SendWireResponse(resp); }
 
+  // Payload is referenced directly — no copy into the closure.
+  // SendWireResponse is synchronous so resp outlives the callback invocation.
   template <typename T>
-  void Send(const Response<T> resp) {
+  void Send(const Response<T>& resp) {
     WireResponse wire{resp.code, {}, resp.content_format};
     if constexpr (std::is_same_v<T, span<const std::byte>>) {
       if (!resp.payload.empty()) {
@@ -109,7 +122,7 @@ class AsyncResponse : public AsyncResponseBase {
         wire.content_format = Serializer::kContentFormat;
       }
       wire.serialize_payload =
-          SerializerSerializeCallback<Serializer>(std::move(resp.payload));
+          SerializerSerializeCallback<Serializer>(resp.payload);
     }
     SendWireResponse(wire);
   }
@@ -194,26 +207,13 @@ struct Request {
   Token token_;
 };
 
-// ── HandlerResult
-// ───────────────────────────────────────────────────────────── Returned from
-// every RequestHandler (directly or via BindImpl wrapper). For sync handlers
-// the response is embedded so CoapServer::OnMessage can send it after the
-// handler returns.  For async handlers only the is_async flag is set; the
-// actual response arrives later via AsyncResponse::Send().
-struct HandlerResult final {
-  bool is_async{false};
-  WireResponse response{};
-
-  // Sync: embed a pre-built wire response.
-  HandlerResult(WireResponse r) : is_async{false}, response{std::move(r)} {}
-
-  // Implicit from any AsyncResponse<S> specialisation.
-  template <typename S>
-  HandlerResult(const AsyncResponse<S>&) : is_async{true} {}
+enum class HandlerResult {
+  kSync,
+  kAsync,
 };
 
 // Handler callable. May capture state (e.g. [this]).
-using RequestHandler = function<HandlerResult(const RawRequest&)>;
+using RequestHandler = function<HandlerResult(const RawRequest&, WireSender&)>;
 
 }  // namespace coap_pp
 

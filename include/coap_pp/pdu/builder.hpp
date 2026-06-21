@@ -55,7 +55,7 @@ class MessageBuilder {
   }
 
   MessageBuilder& SetSerializePayloadCallback(
-      SerializePayloadCallback callback) {
+      const SerializePayloadCallback& callback) {
     serialize_payload_cb_ = callback;
     return *this;
   }

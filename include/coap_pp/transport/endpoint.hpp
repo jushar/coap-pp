@@ -25,6 +25,7 @@ struct Endpoint {
   bool operator==(const Endpoint& other) const {
     return storage == other.storage;
   }
+  bool operator!=(const Endpoint& other) const { return !(*this == other); }
 
   template <typename T>
   static Endpoint From(const T& addr) {

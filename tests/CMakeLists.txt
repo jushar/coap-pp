@@ -15,7 +15,7 @@ target_link_libraries(coap-pp-tests PRIVATE
     coap-pp-warnings
 )
 
-target_compile_features(coap-pp-tests PRIVATE cxx_std_20)
+target_compile_features(coap-pp-tests PRIVATE cxx_std_17)
 
 include(GoogleTest)
 gtest_discover_tests(coap-pp-tests)

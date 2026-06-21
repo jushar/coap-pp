@@ -98,18 +98,18 @@ class Router : public RouterBase {
           std::decay_t<std::invoke_result_t<RawFn, const RawRequest&>>;
 
       if constexpr (detail::is_async_response<ReturnType>::value) {
-        // Handler signals async by returning an AsyncResponse.
-        return [fn = std::forward<Fn>(fn)](
-                   const RawRequest& req) -> HandlerResult {
-          return fn(req);  // AsyncResponse<S> → HandlerResult (implicit)
+        return [fn = std::forward<Fn>(fn)](const RawRequest& req,
+                                           WireSender&) -> HandlerResult {
+          fn(req);
+          return HandlerResult::kAsync;
         };
       } else {
-        // Handler returns Response<BodyType> → wrap payload and embed in
-        // HandlerResult so CoapServer::OnMessage can send it.
         using BodyType = typename ReturnType::BodyType;
         return [fn = std::forward<Fn>(fn)](
-                   const RawRequest& req) -> HandlerResult {
-          return MakeHandlerResult<BodyType>(fn(req));
+                   const RawRequest& req, WireSender& sender) -> HandlerResult {
+          auto response = fn(req);
+          sender(MakeWireResponse<BodyType>(response));
+          return HandlerResult::kSync;
         };
       }
 
@@ -120,35 +120,40 @@ class Router : public RouterBase {
 
       if constexpr (detail::is_async_response<ReturnType>::value) {
         return [fn = std::forward<Fn>(fn)](
-                   const RawRequest& req) -> HandlerResult {
+                   const RawRequest& req, WireSender& sender) -> HandlerResult {
           auto body = Deserializer::template Deserialize<T>(req.payload);
           if (!body) {
             detail::Log<LogLevel::kWarning>("deserialization failed");
-            return WireResponse{codes::kBadRequest};
+            sender(WireResponse{codes::kBadRequest});
+            return HandlerResult::kSync;
           }
-          return fn(Request<T>{req, std::move(*body)});
+          fn(Request<T>{req, std::move(*body)});
+          return HandlerResult::kAsync;
         };
       } else {
         using BodyType = typename ReturnType::BodyType;
         return [fn = std::forward<Fn>(fn)](
-                   const RawRequest& req) -> HandlerResult {
+                   const RawRequest& req, WireSender& sender) -> HandlerResult {
           auto body = Deserializer::template Deserialize<T>(req.payload);
           if (!body) {
             detail::Log<LogLevel::kWarning>("deserialization failed");
-            return WireResponse{codes::kBadRequest};
+            sender(WireResponse{codes::kBadRequest});
+            return HandlerResult::kSync;
           }
-          return MakeHandlerResult<BodyType>(
-              fn(Request<T>{req, std::move(*body)}));
+          auto response = fn(Request<T>{req, std::move(*body)});
+          sender(MakeWireResponse<BodyType>(response));
+          return HandlerResult::kSync;
         };
       }
     }
   }
 
-  // Build a HandlerResult (sync) from a Response<BodyType>.
-  // Payload is captured by value so there is no dangling reference when
-  // CoapServer::OnMessage serializes the message after the handler returns.
-  template <typename BodyType, typename T>
-  static HandlerResult MakeHandlerResult(T response) {
+  // Build a WireResponse from a Response<BodyType> using a reference-based
+  // serialize callback. The callback holds a reference to response.payload;
+  // this is safe because sender() is called synchronously before response goes
+  // out of scope in the BindImpl wrapper above.
+  template <typename BodyType, typename ResponseT>
+  static WireResponse MakeWireResponse(ResponseT& response) {
     if constexpr (std::is_same_v<BodyType, span<const std::byte>>) {
       return WireResponse{response.code,
                           response.payload.empty()
@@ -156,16 +161,13 @@ class Router : public RouterBase {
                               : RawBytesSerializeCallback(response.payload),
                           response.content_format};
     } else {
-      // Typed payload — move the payload value into the callback so lifetime
-      // is independent of the Response<T> temporary.
       const ContentFormat cf =
           (response.content_format != ContentFormat::kNoContentFormat)
               ? response.content_format
               : Serializer::kContentFormat;
       return WireResponse{
           response.code,
-          SerializerSerializeCallback<Serializer>(std::move(response.payload)),
-          cf};
+          SerializerSerializeCallback<Serializer>(response.payload), cf};
     }
   }
 };

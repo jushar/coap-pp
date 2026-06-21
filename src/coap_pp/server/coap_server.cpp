@@ -101,9 +101,15 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
 
   RawRequest req{msg.code, msg.options, msg.payload,    *this,
                  sender,   msg.type,    msg.message_id, msg.token};
-  HandlerResult result = found_route->handler(req);
 
-  if (result.is_async) {
+  // WireSender is called synchronously from within the handler so the
+  // handler's local Response<T> is still alive when we serialize.
+  WireSender wire_sender{[this, &sender, &msg](const WireResponse& r) {
+    this->SendResponse(sender, msg.type, msg.message_id, msg.token, true, r);
+  }};
+  const HandlerResult result = found_route->handler(req, wire_sender);
+
+  if (result == HandlerResult::kAsync) {
     detail::Log<LogLevel::kDebug>(
         "%s: async response, sending empty ack if CON", path_buf);
 
@@ -113,9 +119,6 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
     if (msg.type == MessageType::kCon) {
       SendEmptyAck(sender, msg.message_id);
     }
-  } else {
-    SendResponse(sender, msg.type, msg.message_id, msg.token, true,
-                 result.response);
   }
 }
 
