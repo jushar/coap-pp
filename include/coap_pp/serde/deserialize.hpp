@@ -1,4 +1,9 @@
-#pragma once
+/**
+ * Copyright (c) 2026 jushar
+ * SPDX-License-Identifier: MIT
+ */
+#ifndef COAP_PP_SERDE_DESERIALIZE_HPP
+#define COAP_PP_SERDE_DESERIALIZE_HPP
 
 #include <cstddef>
 #include <optional>
@@ -35,3 +40,5 @@ struct NoopDeserializer final {
 };
 
 }  // namespace coap_pp
+
+#endif

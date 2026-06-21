@@ -7,6 +7,7 @@
 #include <iostream>
 #include <thread>
 
+#include "coap_pp/content_formats.hpp"
 #include "coap_pp/log.hpp"
 #include "coap_pp/messaging/messenger.hpp"
 #include "coap_pp/server/coap_server.hpp"
@@ -24,31 +25,34 @@ static constexpr std::string_view kSlowText = "slow response";
 
 class ExampleController final {
  private:
-  HandlerResult HandleHello(const RawRequest&) const {
+  auto HandleHello(const RawRequest&) const {
     return Response{codes::kContent,
-                    as_bytes(span{kHelloText.data(), kHelloText.size()}), 0u};
+                    as_bytes(span{kHelloText.data(), kHelloText.size()}),
+                    ContentFormat::kTextPlain};
   }
 
   // Async: handler returns immediately; the detached thread delivers the
   // actual response 2 seconds later via AsyncResponse::Send().
   // For CON requests the server sends an empty ACK right away to stop
   // client retransmissions; the deferred reply arrives as a new CON.
-  HandlerResult HandleSlow(const RawRequest& req) const {
+  auto HandleSlow(const RawRequest& req) const {
     auto async = req.MakeAsync();
     std::thread([a = async]() mutable {
       std::this_thread::sleep_for(2s);
       a.Send(Response{codes::kContent,
-                      as_bytes(span{kSlowText.data(), kSlowText.size()}), 0u});
+                      as_bytes(span{kSlowText.data(), kSlowText.size()}),
+                      ContentFormat::kTextPlain});
     }).detach();
     return async;
   }
 
-  HandlerResult HandleWithPayload(const Request<HelloRequest>& request) const {
+  auto HandleWithPayload(const Request<HelloRequest>& request) const {
     std::cout << "Got payload: { name = " << request.Body().name << " }"
               << std::endl;
 
-    return Response{codes::kContent,
-                    as_bytes(span{kHelloText.data(), kHelloText.size()}), 0u};
+    HelloResponse response{.greeting = "Hello from protobuf!"};
+
+    return Response{codes::kContent, response};
   }
 
  public:
@@ -65,8 +69,7 @@ class ExampleController final {
            std::cout << "Got payload (lambda): { name = " << request.Body().name
                      << " }" << std::endl;
            return Response{codes::kContent,
-                           as_bytes(span{kHelloText.data(), kHelloText.size()}),
-                           0u};
+                           HelloResponse{.greeting = "hello from lambda"}};
          })},
     }};
     static NanopbRouter router{"", routes};

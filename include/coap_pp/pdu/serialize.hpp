@@ -10,9 +10,18 @@
 
 #include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/option.hpp"
+#include "coap_pp/util/function.hpp"
 #include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
+
+enum class SerializeError : uint8_t {
+  kOk = 0,
+  kBufferTooSmall,
+};
+
+using SerializePayloadCallback =
+    function<SerializeError(span<std::byte>, std::size_t& written)>;
 
 // Outgoing message ready for serialization.
 // All spans are non-owning; caller must keep underlying data alive through
@@ -24,12 +33,7 @@ struct OutgoingMessage {
   uint16_t message_id{0};
   Token token{};
   span<const OptionView> options{};
-  span<const std::byte> payload{};
-};
-
-enum class SerializeError : uint8_t {
-  kOk = 0,
-  kBufferTooSmall,
+  SerializePayloadCallback serialize_payload{};
 };
 
 // Serializes msg into out[0..written-1]. Returns SerializeError::kOk on

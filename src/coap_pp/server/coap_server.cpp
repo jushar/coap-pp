@@ -5,11 +5,13 @@
 #include "coap_pp/server/coap_server.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
-#include <variant>
 
+#include "coap_pp/content_formats.hpp"
 #include "coap_pp/log.hpp"
 #include "coap_pp/pdu/builder.hpp"
+#include "coap_pp/server/resource.hpp"
 
 namespace coap_pp {
 namespace {
@@ -89,23 +91,31 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
     detail::Log<LogLevel::kInfo>(
         "%s: %.*s", path_matched ? "405 Method Not Allowed" : "404 Not Found",
         static_cast<int>(path_len), path_buf);
-    SendResponse(sender, msg, Response{error, {}});
+    SendResponse(sender, msg.type, msg.message_id, msg.token, true,
+                 WireResponse{error, {}});
     return;
   }
 
+  detail::Log<LogLevel::kDebug>("%.*s: Incoming request",
+                                static_cast<int>(path_len), path_buf);
+
   RawRequest req{msg.code, msg.options, msg.payload,    *this,
-                sender,   msg.type,    msg.message_id, msg.token};
+                 sender,   msg.type,    msg.message_id, msg.token};
   HandlerResult result = found_route->handler(req);
 
-  if (std::holds_alternative<Response>(result)) {
-    SendResponse(sender, msg, std::get<Response>(result));
-  } else {
+  if (result.is_async) {
+    detail::Log<LogLevel::kDebug>(
+        "%s: async response, sending empty ack if CON", path_buf);
+
     // Async: for CON send an empty ACK immediately to stop client
     // retransmissions. The actual reply arrives later via
     // AsyncResponse::Send().
     if (msg.type == MessageType::kCon) {
       SendEmptyAck(sender, msg.message_id);
     }
+  } else {
+    SendResponse(sender, msg.type, msg.message_id, msg.token, true,
+                 result.response);
   }
 }
 
@@ -120,51 +130,31 @@ void CoapServer::SendEmptyAck(const Endpoint& to, uint16_t message_id) {
   }
 }
 
-void CoapServer::SendAsyncResponse(const Endpoint& to, MessageType req_type,
-                                   uint16_t req_mid, const Token& token,
-                                   const Response& resp) {
+void CoapServer::SendResponse(const Endpoint& to, MessageType req_type,
+                              uint16_t req_mid, const Token& token,
+                              bool as_piggybacked_ack,
+                              const WireResponse& resp) {
   MessageBuilder<2> builder;
   // Originally-CON: empty ACK was already sent; deferred reply is a new CON.
   // Originally-NON: send NON with new MID.
   const bool was_con = (req_type == MessageType::kCon);
-  builder.SetType(was_con ? MessageType::kCon : MessageType::kNon)
+  // Piggybacked ACK only makes sense for CON; NON requests always get NON.
+  const MessageType out_type =
+      was_con ? (as_piggybacked_ack ? MessageType::kAck : MessageType::kCon)
+              : MessageType::kNon;
+  builder.SetType(out_type)
       .SetCode(resp.code)
-      .SetMessageId(next_mid_++)
+      .SetMessageId(was_con && as_piggybacked_ack ? req_mid : next_mid_++)
       .SetToken(token);
-  if (resp.content_format != Response::kNoContentFormat) {
-    builder.AddOption(12u, resp.content_format);
+  if (resp.content_format != ContentFormat::kNoContentFormat) {
+    builder.AddOption(12u, static_cast<uint32_t>(resp.content_format.Value()));
   }
-  if (!resp.payload.empty()) {
-    builder.SetPayload(resp.payload);
+  if (resp.serialize_payload) {
+    builder.SetSerializePayloadCallback(resp.serialize_payload);
   }
   if (messenger_.Send(to, builder.Build()) != MessengerError::kOk) {
     detail::Log<LogLevel::kWarning>("failed to send async response for MID %u",
                                     req_mid);
-  }
-}
-
-void CoapServer::SendResponse(const Endpoint& to, const Message& req,
-                              const Response& resp) {
-  MessageBuilder<2> builder;
-
-  // CON request -> piggybacked ACK (same MID); NON request -> NON (new MID).
-  const bool is_con = (req.type == MessageType::kCon);
-  builder.SetType(is_con ? MessageType::kAck : MessageType::kNon)
-      .SetCode(resp.code)
-      .SetMessageId(is_con ? req.message_id : next_mid_++)
-      .SetToken(req.token);
-
-  if (resp.content_format != Response::kNoContentFormat) {
-    builder.AddOption(12u, resp.content_format);
-  }
-
-  if (!resp.payload.empty()) {
-    builder.SetPayload(resp.payload);
-  }
-
-  if (messenger_.Send(to, builder.Build()) != MessengerError::kOk) {
-    detail::Log<LogLevel::kWarning>("failed to send response for MID %u",
-                                    req.message_id);
   }
 }
 

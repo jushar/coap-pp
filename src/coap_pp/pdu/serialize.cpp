@@ -57,9 +57,7 @@ SerializeError Serialize(const OutgoingMessage& msg, span<std::byte> out,
             [](std::monostate) -> std::size_t { return 0u; },
             [](uint32_t v) -> std::size_t { return UintEncodedLength(v); },
             [](std::string_view sv) -> std::size_t { return sv.size(); },
-            [](span<const std::byte> s) -> std::size_t {
-              return s.size();
-            },
+            [](span<const std::byte> s) -> std::size_t { return s.size(); },
         },
         opt.value);
 
@@ -123,14 +121,18 @@ SerializeError Serialize(const OutgoingMessage& msg, span<std::byte> out,
   }
 
   // Payload marker + payload
-  if (!msg.payload.empty()) {
+  if (msg.serialize_payload) {
     if (!WriteByte(out, pos, 0xFFu)) {
       return SerializeError::kBufferTooSmall;
     }
-    for (auto b : msg.payload) {
-      if (pos >= out.size()) return SerializeError::kBufferTooSmall;
-      out[pos++] = b;
+
+    size_t payload_written{};
+    const SerializeError serialize_error = msg.serialize_payload(
+        out.subspan(pos, out.size() - pos), payload_written);
+    if (serialize_error != SerializeError::kOk) {
+      return serialize_error;
     }
+    pos += payload_written;
   }
 
   written = pos;

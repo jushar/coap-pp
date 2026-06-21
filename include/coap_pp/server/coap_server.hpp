@@ -8,10 +8,9 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "coap_pp/util/span.hpp"
-
 #include "coap_pp/messaging/messenger.hpp"
-#include "coap_pp/server/router.hpp"
+#include "coap_pp/server/router_base.hpp"
+#include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
 
@@ -48,19 +47,16 @@ class CoapServer : private MessageHandlerIF {
   void OnMessage(const Endpoint& sender, const Message& msg) override;
   void OnConTimeout(uint16_t /*message_id*/) override {}
 
-  void SendResponse(const Endpoint& to, const Message& req,
-                    const Response& resp);
-
   // Called by AsyncResponse::Send() to deliver a deferred reply.
   // Originally-CON requests: reply is a new CON with a fresh MID.
   // Originally-NON requests: reply is a NON with a fresh MID.
-  void SendAsyncResponse(const Endpoint& to, MessageType req_type,
-                         uint16_t req_mid, const Token& token,
-                         const Response& resp);
+  void SendResponse(const Endpoint& to, MessageType req_type, uint16_t req_mid,
+                    const Token& token, bool is_piggybacked_ack,
+                    const WireResponse& resp);
 
   void SendEmptyAck(const Endpoint& to, uint16_t message_id);
 
-  friend class AsyncResponse;
+  friend class AsyncResponseBase;
 
   Messenger& messenger_;
   span<RouterBase*> routers_;

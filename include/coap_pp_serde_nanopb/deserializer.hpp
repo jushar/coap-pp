@@ -1,3 +1,7 @@
+/**
+ * Copyright (c) 2026 jushar
+ * SPDX-License-Identifier: MIT
+ */
 #ifndef COAP_PP_SERDE_NANOPB_DESERIALIZER_HPP
 #define COAP_PP_SERDE_NANOPB_DESERIALIZER_HPP
 
@@ -7,12 +11,10 @@
 #include <optional>
 
 #include "coap_pp/util/span.hpp"
+#include "coap_pp_serde_nanopb/fields.hpp"
 #include "pb.h"
 
 namespace coap_pp {
-
-template <typename T>
-struct NanopbFields;
 
 struct NanopbDeserializer final {
   template <typename T>

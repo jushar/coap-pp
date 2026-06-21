@@ -9,9 +9,8 @@
 #include <cstddef>
 #include <string_view>
 
-#include "coap_pp/util/span.hpp"
-
 #include "coap_pp/pdu/serialize.hpp"
+#include "coap_pp/util/span.hpp"
 #include "coap_pp/util/static_vector.hpp"
 
 namespace coap_pp {
@@ -55,8 +54,9 @@ class MessageBuilder {
     return Push(OptionView{number, value});
   }
 
-  MessageBuilder& SetPayload(span<const std::byte> data) {
-    payload_ = data;
+  MessageBuilder& SetSerializePayloadCallback(
+      SerializePayloadCallback callback) {
+    serialize_payload_cb_ = callback;
     return *this;
   }
 
@@ -72,7 +72,7 @@ class MessageBuilder {
         message_id_,
         token_,
         span<const OptionView>{options_.data(), options_.size()},
-        payload_,
+        serialize_payload_cb_,
     };
   }
 
@@ -87,7 +87,7 @@ class MessageBuilder {
   uint16_t message_id_{0};
   Token token_{};
   StaticVector<OptionView, MaxOptions> options_{};
-  span<const std::byte> payload_{};
+  SerializePayloadCallback serialize_payload_cb_{};
 };
 
 }  // namespace coap_pp

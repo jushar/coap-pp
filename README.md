@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/jushar/coap-pp/actions/workflows/ci.yml/badge.svg)](https://github.com/jushar/coap-pp/actions/workflows/ci.yml)
 
-A C++20 implementation of the CoAP protocol ([RFC 7252](https://www.rfc-editor.org/rfc/rfc7252)) targeting small embedded systems (e.g. STM32 Cortex-M) in functional-safety contexts.
+A C++17 implementation of the CoAP protocol ([RFC 7252](https://www.rfc-editor.org/rfc/rfc7252)) targeting small embedded systems (e.g. STM32 Cortex-M) in functional-safety contexts.
 
 **Features:**
 - CoAP messaging (reliable/unreliable messages, request/response, retransmission)
@@ -12,7 +12,7 @@ A C++20 implementation of the CoAP protocol ([RFC 7252](https://www.rfc-editor.o
 **Goals:**
 - No heap allocations — all buffers are statically sized or provided via `MemoryPool`
 - Platform-agnostic core; platform-specific code lives only in transport implementations
-- C++20, Google C++ Style Guide
+- C++17, Google C++ Style Guide
 
 **Non-goals:**
 - Hardened implementation that is exposed to the internet. The goal is to provide an implementation for internal MCU networks.
@@ -30,7 +30,7 @@ A C++20 implementation of the CoAP protocol ([RFC 7252](https://www.rfc-editor.o
 ## Requirements
 
 - CMake ≥ 3.30
-- A C++20 compiler (tested: GCC 14, Clang 18)
+- A C++17 compiler (tested: GCC 14, Clang 18)
 
 ## Building
 

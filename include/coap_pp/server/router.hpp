@@ -5,42 +5,19 @@
 #ifndef COAP_PP_SERVER_ROUTER_HPP
 #define COAP_PP_SERVER_ROUTER_HPP
 
-#include <string_view>
+#include <type_traits>
 
+#include "coap_pp/content_formats.hpp"
 #include "coap_pp/log.hpp"
+#include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/serde/deserialize.hpp"
+#include "coap_pp/serde/serialize.hpp"
 #include "coap_pp/server/resource.hpp"
+#include "coap_pp/server/router_base.hpp"
 #include "coap_pp/util/span.hpp"
 #include "coap_pp/util/type_traits.hpp"
 
 namespace coap_pp {
-
-// A single URI-path + method handler entry within a Router.
-// path is relative to the Router's base_path (e.g. "/sensors" for base "/api").
-// The server automatically returns 4.05 Method Not Allowed when the path
-// matches but the request method does not, so handlers need not check
-// req.method themselves.
-struct Route {
-  Code method;
-  std::string_view path;
-  RequestHandler handler;
-};
-
-// Non-template base class for all Router<Deserializer> specialisations.
-// CoapServer stores pointers to this type so that routers with different
-// deserializers can coexist in the same server.
-class RouterBase {
- public:
-  RouterBase(std::string_view base_path, span<const Route> routes)
-      : base_path_{base_path}, routes_{routes} {}
-
-  std::string_view GetBasePath() const { return base_path_; }
-  span<const Route> GetRoutes() const { return routes_; }
-
- private:
-  std::string_view base_path_;
-  span<const Route> routes_;
-};
 
 namespace detail {
 
@@ -54,42 +31,56 @@ struct RequestPayload<Request<T>> {
   using type = T;
 };
 
+// Detects any specialisation of AsyncResponse<S>.
+template <typename T>
+struct is_async_response : std::false_type {};
+
+template <typename S>
+struct is_async_response<AsyncResponse<S>> : std::true_type {};
+
 }  // namespace detail
 
-// Groups a set of routes under a common base path and a shared Deserializer.
-// All storage is caller-provided; no heap allocation.
+// Groups a set of routes under a common base path and a shared
+// Serializer/Deserializer pair.  All storage is caller-provided; no heap.
 //
-// The payload type for each route is deduced from the handler's first argument:
-//   const RawRequest&       – no deserialization, raw bytes available
-//   const Request<T>&       – payload is deserialized to T before the handler
-//                             is called; deserialization failure → 4.00
+// The payload type for each route is deduced from the handler's argument:
+//   const RawRequest&        – no serde, raw bytes in/out
+//   const Request<T>&        – payload deserialized to T before the handler;
+//                              deserialization failure → 4.00 Bad Request
+//
+// For typed handlers the return type Response<U> drives serialization:
+//   Response<span<const std::byte>>  – raw bytes, no serialization
+//   Response<U>                      – U is serialized via Serializer
+//
+// Returning an AsyncResponse defers the reply; the handler must call
+// Send() on the handle at a later time.
 //
 // Usage:
-//   using MyRouter = Router<NanopbDeserializer>;
+//   using MyRouter = Router<NanopbSerializer, NanopbDeserializer>;
 //
-//   // Member function — type deduced from signature:
-//   MyRouter::Bind<&Ctrl::HandleRaw>(ctrl)       // takes const RawRequest&
-//   MyRouter::Bind<&Ctrl::HandleData>(ctrl)      // takes const Request<Data>&
+//   // Member function:
+//   MyRouter::Bind<&Ctrl::HandleRaw>(ctrl)    // takes const RawRequest&
+//   MyRouter::Bind<&Ctrl::HandleData>(ctrl)   // takes const Request<Data>&
 //
-//   // Lambda / free function — type deduced from first parameter:
+//   // Lambda / free function:
 //   MyRouter::Bind([](const RawRequest& req) { ... })
-//   MyRouter::Bind([](const Request<Data>& req) { ... })
-template <typename Deserializer = NoopDeserializer>
+//   MyRouter::Bind([](const Request<Data>& req) -> Response<Result> { ... })
+template <typename Serializer = NoopSerializer,
+          typename Deserializer = NoopDeserializer>
 class Router : public RouterBase {
  public:
   using RouterBase::RouterBase;
 
-  // Bind a const member function pointer.
-  // The handler's first argument type determines the deserialization mode.
+  // Bind a const member function pointer. Return type is deduced from the
+  // member function signature.
   template <auto MemFn, typename Obj>
   static RequestHandler Bind(Obj* self) {
-    using Arg0 = detail::first_arg_t<decltype(MemFn)>;
-    return BindImpl(
-        [self](Arg0 arg) -> HandlerResult { return (self->*MemFn)(arg); });
+    return BindImpl([self](detail::first_arg_t<decltype(MemFn)> arg) {
+      return (self->*MemFn)(arg);
+    });
   }
 
   // Bind any callable (lambda, free function pointer, functor).
-  // The callable's first parameter type determines the deserialization mode.
   template <typename Fn>
   static RequestHandler Bind(Fn&& fn) {
     return BindImpl(std::forward<Fn>(fn));
@@ -100,20 +91,81 @@ class Router : public RouterBase {
   static RequestHandler BindImpl(Fn&& fn) {
     using RawFn = std::decay_t<Fn>;
     using Arg = std::decay_t<detail::first_arg_t<RawFn>>;
+
     if constexpr (std::is_same_v<Arg, RawRequest>) {
-      return [fn = std::forward<Fn>(fn)](
-                 const RawRequest& req) -> HandlerResult { return fn(req); };
+      // ── Raw handler: takes const RawRequest& ──────────────────────────────
+      using ReturnType =
+          std::decay_t<std::invoke_result_t<RawFn, const RawRequest&>>;
+
+      if constexpr (detail::is_async_response<ReturnType>::value) {
+        // Handler signals async by returning an AsyncResponse.
+        return [fn = std::forward<Fn>(fn)](
+                   const RawRequest& req) -> HandlerResult {
+          return fn(req);  // AsyncResponse<S> → HandlerResult (implicit)
+        };
+      } else {
+        // Handler returns Response<BodyType> → wrap payload and embed in
+        // HandlerResult so CoapServer::OnMessage can send it.
+        using BodyType = typename ReturnType::BodyType;
+        return [fn = std::forward<Fn>(fn)](
+                   const RawRequest& req) -> HandlerResult {
+          return MakeHandlerResult<BodyType>(fn(req));
+        };
+      }
+
     } else {
+      // ── Typed handler: takes const Request<T>& ───────────────────────────
       using T = typename detail::RequestPayload<Arg>::type;
-      return
-          [fn = std::forward<Fn>(fn)](const RawRequest& req) -> HandlerResult {
-            auto body = Deserializer::template Deserialize<T>(req.payload);
-            if (!body) {
-              detail::Log<LogLevel::kWarning>("deserialization failed");
-              return Response{codes::kBadRequest};
-            }
-            return fn(Request<T>{req, std::move(*body)});
-          };
+      using ReturnType = std::decay_t<std::invoke_result_t<RawFn, const Arg&>>;
+
+      if constexpr (detail::is_async_response<ReturnType>::value) {
+        return [fn = std::forward<Fn>(fn)](
+                   const RawRequest& req) -> HandlerResult {
+          auto body = Deserializer::template Deserialize<T>(req.payload);
+          if (!body) {
+            detail::Log<LogLevel::kWarning>("deserialization failed");
+            return WireResponse{codes::kBadRequest};
+          }
+          return fn(Request<T>{req, std::move(*body)});
+        };
+      } else {
+        using BodyType = typename ReturnType::BodyType;
+        return [fn = std::forward<Fn>(fn)](
+                   const RawRequest& req) -> HandlerResult {
+          auto body = Deserializer::template Deserialize<T>(req.payload);
+          if (!body) {
+            detail::Log<LogLevel::kWarning>("deserialization failed");
+            return WireResponse{codes::kBadRequest};
+          }
+          return MakeHandlerResult<BodyType>(
+              fn(Request<T>{req, std::move(*body)}));
+        };
+      }
+    }
+  }
+
+  // Build a HandlerResult (sync) from a Response<BodyType>.
+  // Payload is captured by value so there is no dangling reference when
+  // CoapServer::OnMessage serializes the message after the handler returns.
+  template <typename BodyType, typename T>
+  static HandlerResult MakeHandlerResult(T response) {
+    if constexpr (std::is_same_v<BodyType, span<const std::byte>>) {
+      return WireResponse{response.code,
+                          response.payload.empty()
+                              ? SerializePayloadCallback{}
+                              : RawBytesSerializeCallback(response.payload),
+                          response.content_format};
+    } else {
+      // Typed payload — move the payload value into the callback so lifetime
+      // is independent of the Response<T> temporary.
+      const ContentFormat cf =
+          (response.content_format != ContentFormat::kNoContentFormat)
+              ? response.content_format
+              : Serializer::kContentFormat;
+      return WireResponse{
+          response.code,
+          SerializerSerializeCallback<Serializer>(std::move(response.payload)),
+          cf};
     }
   }
 };
