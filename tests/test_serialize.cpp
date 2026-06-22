@@ -7,6 +7,7 @@
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/pdu/deserialize.hpp"
 #include "coap_pp/pdu/serialize.hpp"
+#include "coap_pp/serde/serialize.hpp"
 
 namespace coap_pp {
 namespace {
@@ -227,7 +228,7 @@ TEST(Serialize, Payload) {
   msg.type = MessageType::kAck;
   msg.code = codes::kContent;
   msg.message_id = 0x0001u;
-  msg.payload = body;
+  msg.serialize_payload = RawBytesSerializeCallback(body);
 
   auto [buf, size, ec] = DoSerialize(msg);
   ASSERT_EQ(ec, SerializeError::kOk);
@@ -246,7 +247,7 @@ TEST(Serialize, OptionsAndPayload) {
   msg.code = codes::kGet;
   msg.message_id = 0x0001u;
   msg.options = span<const OptionView>{&opt, 1};
-  msg.payload = body;
+  msg.serialize_payload = RawBytesSerializeCallback(body);
 
   auto [buf, size, ec] = DoSerialize(msg);
   ASSERT_EQ(ec, SerializeError::kOk);
@@ -291,7 +292,7 @@ TEST(Serialize, RoundTrip_WithOptionsAndPayload) {
   out_msg.message_id = 0xABCDu;
   out_msg.token = tok;
   out_msg.options = span<const OptionView>{&opt, 1};
-  out_msg.payload = body;
+  out_msg.serialize_payload = RawBytesSerializeCallback(body);
 
   auto [buf, size, ec] = DoSerialize(out_msg);
   ASSERT_EQ(ec, SerializeError::kOk);
@@ -329,7 +330,7 @@ TEST(MessageBuilder, ChainSetters) {
   EXPECT_EQ(msg.code, codes::kPost);
   EXPECT_EQ(msg.message_id, 0x1234u);
   EXPECT_TRUE(msg.options.empty());
-  EXPECT_TRUE(msg.payload.empty());
+  EXPECT_FALSE(static_cast<bool>(msg.serialize_payload));
 }
 
 TEST(MessageBuilder, SortsOptions) {
@@ -397,7 +398,7 @@ TEST(MessageBuilder, RoundTripViaBuilder) {
       .SetMessageId(0x0005u)
       .SetToken(tok)
       .AddOption(11u, std::string_view{"res"})
-      .SetPayload(payload);
+      .SetSerializePayloadCallback(RawBytesSerializeCallback(payload));
 
   const auto out_msg = b.Build();
   auto [buf, size, ec] = DoSerialize(out_msg);

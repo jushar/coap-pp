@@ -4,11 +4,12 @@
  */
 #include <gtest/gtest.h>
 
+#include "coap_pp/content_formats.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/pdu/deserialize.hpp"
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/server/coap_server.hpp"
-#include "coap_pp/server/router.hpp"
+#include "coap_pp/server/resource.hpp"
 #include "coap_pp/util/static_vector.hpp"
 
 namespace coap_pp {
@@ -60,9 +61,9 @@ class MockTransport : public TransportIF {
   Message DeserializeResponseAt(std::size_t index) const {
     EXPECT_GT(sends_.size(), index);
     Message m{};
-    (void)Deserialize(span<const std::byte>{sends_[index].data.data(),
-                                                 sends_[index].size},
-                      m);
+    (void)Deserialize(
+        span<const std::byte>{sends_[index].data.data(), sends_[index].size},
+        m);
     return m;
   }
 
@@ -96,13 +97,14 @@ class ServerTest : public ::testing::Test {
       remaining =
           (slash == std::string_view::npos) ? "" : remaining.substr(slash + 1);
     }
-    if (!payload.empty()) b.SetPayload(payload);
+    if (!payload.empty()) {
+      b.SetSerializePayloadCallback(RawBytesSerializeCallback(payload));
+    }
 
     std::array<std::byte, 256> buf{};
     std::size_t written = 0u;
     (void)Serialize(b.Build(), buf, written);
-    transport_.Inject(Endpoint{},
-                      span<const std::byte>{buf.data(), written});
+    transport_.Inject(Endpoint{}, span<const std::byte>{buf.data(), written});
   }
 };
 
@@ -112,9 +114,10 @@ class ServerTest : public ::testing::Test {
 TEST_F(ServerTest, Dispatch_KnownPath_CallsHandler) {
   bool called = false;
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/temp", [&](const RawRequest&) -> Response {
+      {{codes::kGet, "/temp", [&](const RawRequest&, WireSender& s) -> HandlerResult {
           called = true;
-          return {codes::kContent, {}};
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
         }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
@@ -127,8 +130,10 @@ TEST_F(ServerTest, Dispatch_KnownPath_CallsHandler) {
 
 TEST_F(ServerTest, Dispatch_UnknownPath_Returns404) {
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/known",
-        [](const RawRequest&) -> Response { return {codes::kContent, {}}; }}}};
+      {{codes::kGet, "/known", [](const RawRequest&, WireSender& s) -> HandlerResult {
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
 
@@ -141,8 +146,10 @@ TEST_F(ServerTest, Dispatch_UnknownPath_Returns404) {
 
 TEST_F(ServerTest, Dispatch_UnknownMethod_Returns405) {
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/res",
-        [](const RawRequest&) -> Response { return {codes::kContent, {}}; }}}};
+      {{codes::kGet, "/res", [](const RawRequest&, WireSender& s) -> HandlerResult {
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
 
@@ -160,9 +167,10 @@ TEST_F(ServerTest, Dispatch_WrongMethod_Returns405_WithoutCallingHandler) {
   // called.
   bool handler_called = false;
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/res", [&](const RawRequest&) -> Response {
+      {{codes::kGet, "/res", [&](const RawRequest&, WireSender& s) -> HandlerResult {
           handler_called = true;
-          return {codes::kContent, {}};
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
         }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
@@ -177,8 +185,10 @@ TEST_F(ServerTest, Dispatch_WrongMethod_Returns405_WithoutCallingHandler) {
 
 TEST_F(ServerTest, Dispatch_EmptyCode_Ignored) {
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/res",
-        [](const RawRequest&) -> Response { return {codes::kContent, {}}; }}}};
+      {{codes::kGet, "/res", [](const RawRequest&, WireSender& s) -> HandlerResult {
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
 
@@ -196,19 +206,20 @@ TEST_F(ServerTest, Dispatch_ResponseCode_Ignored) {
   std::array<std::byte, 64> buf{};
   std::size_t written = 0u;
   (void)Serialize(b.Build(), buf, written);
-  transport_.Inject(Endpoint{},
-                    span<const std::byte>{buf.data(), written});
+  transport_.Inject(Endpoint{}, span<const std::byte>{buf.data(), written});
 
   EXPECT_EQ(transport_.sends_.size(), 0u);
 }
 
 // ── Response type (CON vs NON)
-// ────────────────────────────────────────────────
+// ────────────────────────────────────────
 
 TEST_F(ServerTest, CON_Request_GetsACKResponse) {
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/r",
-        [](const RawRequest&) -> Response { return {codes::kContent, {}}; }}}};
+      {{codes::kGet, "/r", [](const RawRequest&, WireSender& s) -> HandlerResult {
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
 
@@ -221,8 +232,10 @@ TEST_F(ServerTest, CON_Request_GetsACKResponse) {
 
 TEST_F(ServerTest, NON_Request_GetsNONResponse) {
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/r",
-        [](const RawRequest&) -> Response { return {codes::kContent, {}}; }}}};
+      {{codes::kGet, "/r", [](const RawRequest&, WireSender& s) -> HandlerResult {
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
 
@@ -235,8 +248,10 @@ TEST_F(ServerTest, NON_Request_GetsNONResponse) {
 
 TEST_F(ServerTest, ACK_MID_MatchesRequest) {
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/r",
-        [](const RawRequest&) -> Response { return {codes::kContent, {}}; }}}};
+      {{codes::kGet, "/r", [](const RawRequest&, WireSender& s) -> HandlerResult {
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
 
@@ -254,10 +269,11 @@ TEST_F(ServerTest, HandlerReceives_Method_And_Payload) {
   std::vector<std::byte> received_payload;
 
   const std::array<Route, 1> routes{
-      {{codes::kPost, "/ep", [&](const RawRequest& req) -> Response {
+      {{codes::kPost, "/ep", [&](const RawRequest& req, WireSender& s) -> HandlerResult {
           received_method = req.method;
           received_payload.assign(req.payload.begin(), req.payload.end());
-          return {codes::kChanged, {}};
+          s(WireResponse{codes::kChanged});
+          return HandlerResult::kSync;
         }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
@@ -276,8 +292,9 @@ TEST_F(ServerTest, HandlerReceives_Method_And_Payload) {
 
 TEST_F(ServerTest, Response_ContentFormat_AddedWhenSet) {
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/data", [](const RawRequest&) -> Response {
-          return {codes::kContent, {}, 50u};  // 50 = application/json
+      {{codes::kGet, "/data", [](const RawRequest&, WireSender& s) -> HandlerResult {
+          s(WireResponse{codes::kContent, {}, ContentFormat::kJson});
+          return HandlerResult::kSync;
         }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
@@ -299,8 +316,9 @@ TEST_F(ServerTest, Response_ContentFormat_AddedWhenSet) {
 
 TEST_F(ServerTest, Response_NoContentFormat_WhenNotSet) {
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/plain", [](const RawRequest&) -> Response {
-          return {codes::kContent, {}};  // kNoContentFormat
+      {{codes::kGet, "/plain", [](const RawRequest&, WireSender& s) -> HandlerResult {
+          s(WireResponse{codes::kContent});  // kNoContentFormat
+          return HandlerResult::kSync;
         }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
@@ -324,14 +342,16 @@ TEST_F(ServerTest, MultipleResources_EachDispatches) {
 
   const std::array<Route, 2> routes{{
       {codes::kGet, "/temp",
-       [&](const RawRequest&) -> Response {
+       [&](const RawRequest&, WireSender& s) -> HandlerResult {
          ++temp_count;
-         return {};
+         s(WireResponse{});
+         return HandlerResult::kSync;
        }},
       {codes::kGet, "/humid",
-       [&](const RawRequest&) -> Response {
+       [&](const RawRequest&, WireSender& s) -> HandlerResult {
          ++humid_count;
-         return {};
+         s(WireResponse{});
+         return HandlerResult::kSync;
        }},
   }};
   RouterBase router{"", routes};
@@ -351,9 +371,11 @@ TEST_F(ServerTest, MultipleResources_EachDispatches) {
 TEST_F(ServerTest, MultiSegmentPath_Dispatches) {
   bool called = false;
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/sensors/temperature", [&](const RawRequest&) -> Response {
+      {{codes::kGet, "/sensors/temperature",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
           called = true;
-          return {codes::kContent, {}};
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
         }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
@@ -367,9 +389,10 @@ TEST_F(ServerTest, MultiSegmentPath_Dispatches) {
 TEST_F(ServerTest, MultiSegmentPath_DoesNotMatchPrefix) {
   bool called = false;
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/sensors", [&](const RawRequest&) -> Response {
+      {{codes::kGet, "/sensors", [&](const RawRequest&, WireSender& s) -> HandlerResult {
           called = true;
-          return {codes::kContent, {}};
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
         }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
@@ -389,9 +412,11 @@ TEST_F(ServerTest, MultiSegmentPath_DoesNotMatchPrefix) {
 TEST_F(ServerTest, RouterBasePath_DispatchesWithPrefix) {
   bool called = false;
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/temperature", [&](const RawRequest&) -> Response {
+      {{codes::kGet, "/temperature",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
           called = true;
-          return {codes::kContent, {}};
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
         }}}};
   RouterBase router{"/api", routes};
   server_.AddRouter(router);
@@ -404,9 +429,11 @@ TEST_F(ServerTest, RouterBasePath_DispatchesWithPrefix) {
 TEST_F(ServerTest, RouterBasePath_DoesNotMatchWithoutPrefix) {
   bool called = false;
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/temperature", [&](const RawRequest&) -> Response {
+      {{codes::kGet, "/temperature",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
           called = true;
-          return {codes::kContent, {}};
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
         }}}};
   RouterBase router{"/api", routes};
   server_.AddRouter(router);
@@ -424,14 +451,16 @@ TEST_F(ServerTest, MultipleRouters_EachDispatches) {
   bool actuators_called = false;
 
   const std::array<Route, 1> sensor_routes{
-      {{codes::kGet, "/temp", [&](const RawRequest&) -> Response {
+      {{codes::kGet, "/temp", [&](const RawRequest&, WireSender& s) -> HandlerResult {
           sensors_called = true;
-          return {codes::kContent, {}};
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
         }}}};
   const std::array<Route, 1> actuator_routes{
-      {{codes::kPut, "/led", [&](const RawRequest&) -> Response {
+      {{codes::kPut, "/led", [&](const RawRequest&, WireSender& s) -> HandlerResult {
           actuators_called = true;
-          return {codes::kChanged, {}};
+          s(WireResponse{codes::kChanged});
+          return HandlerResult::kSync;
         }}}};
 
   RouterBase sensors_router{"/sensors", sensor_routes};
@@ -452,10 +481,11 @@ TEST_F(ServerTest, MultipleRouters_EachDispatches) {
 TEST_F(ServerTest, Async_NON_NoSendBeforeAsyncResponseSendCalled) {
   AsyncResponse pending;
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/slow", [&pending](const RawRequest& req) -> HandlerResult {
+      {{codes::kGet, "/slow",
+        [&pending](const RawRequest& req, WireSender&) -> HandlerResult {
           auto async = req.MakeAsync();
           pending = async;
-          return async;
+          return HandlerResult::kAsync;
         }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
@@ -465,7 +495,7 @@ TEST_F(ServerTest, Async_NON_NoSendBeforeAsyncResponseSendCalled) {
   // No send before the handler calls Send().
   EXPECT_EQ(transport_.sends_.size(), 0u);
 
-  pending.Send(Response{codes::kContent, {}});
+  pending.Send(WireResponse{codes::kContent});
 
   ASSERT_EQ(transport_.sends_.size(), 1u);
   const auto resp = transport_.DeserializeFirstResponse();
@@ -476,10 +506,11 @@ TEST_F(ServerTest, Async_NON_NoSendBeforeAsyncResponseSendCalled) {
 TEST_F(ServerTest, Async_CON_SendsEmptyAckImmediately) {
   AsyncResponse pending;
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/slow", [&pending](const RawRequest& req) -> HandlerResult {
+      {{codes::kGet, "/slow",
+        [&pending](const RawRequest& req, WireSender&) -> HandlerResult {
           auto async = req.MakeAsync();
           pending = async;
-          return async;
+          return HandlerResult::kAsync;
         }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
@@ -497,17 +528,18 @@ TEST_F(ServerTest, Async_CON_SendsEmptyAckImmediately) {
 TEST_F(ServerTest, Async_CON_DelayedResponseIsCON_WithFreshMID) {
   AsyncResponse pending;
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/slow", [&pending](const RawRequest& req) -> HandlerResult {
+      {{codes::kGet, "/slow",
+        [&pending](const RawRequest& req, WireSender&) -> HandlerResult {
           auto async = req.MakeAsync();
           pending = async;
-          return async;
+          return HandlerResult::kAsync;
         }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
 
   InjectRequest(MessageType::kCon, codes::kGet, 0xBEEFu, "/slow");
 
-  pending.Send(Response{codes::kContent, {}});
+  pending.Send(WireResponse{codes::kContent});
 
   ASSERT_EQ(transport_.sends_.size(), 2u);
   const auto deferred = transport_.DeserializeResponseAt(1);
@@ -519,10 +551,11 @@ TEST_F(ServerTest, Async_CON_DelayedResponseIsCON_WithFreshMID) {
 TEST_F(ServerTest, Async_CON_DelayedResponse_CarriesToken) {
   AsyncResponse pending;
   const std::array<Route, 1> routes{
-      {{codes::kGet, "/slow", [&pending](const RawRequest& req) -> HandlerResult {
+      {{codes::kGet, "/slow",
+        [&pending](const RawRequest& req, WireSender&) -> HandlerResult {
           auto async = req.MakeAsync();
           pending = async;
-          return async;
+          return HandlerResult::kAsync;
         }}}};
   RouterBase router{"", routes};
   server_.AddRouter(router);
@@ -542,10 +575,9 @@ TEST_F(ServerTest, Async_CON_DelayedResponse_CarriesToken) {
   std::array<std::byte, 256> buf{};
   std::size_t written = 0u;
   (void)Serialize(b.Build(), buf, written);
-  transport_.Inject(Endpoint{},
-                    span<const std::byte>{buf.data(), written});
+  transport_.Inject(Endpoint{}, span<const std::byte>{buf.data(), written});
 
-  pending.Send(Response{codes::kContent, {}});
+  pending.Send(WireResponse{codes::kContent});
 
   ASSERT_EQ(transport_.sends_.size(), 2u);
   const auto deferred = transport_.DeserializeResponseAt(1);

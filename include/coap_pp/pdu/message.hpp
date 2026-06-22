@@ -37,6 +37,7 @@ struct Code {
   }
 
   bool operator==(const Code& other) const { return value == other.value; }
+  bool operator!=(const Code& other) const { return value != other.value; }
 };
 
 // Well-known codes from RFC 7252 §12.1 and §12.1.2.
@@ -93,6 +94,7 @@ struct Token {
     }
     return true;
   }
+  bool operator!=(const Token& other) const { return !(*this == other); }
 };
 
 // Fully deserialized CoAP message. All spans are non-owning views into the

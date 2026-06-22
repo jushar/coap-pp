@@ -25,7 +25,7 @@ add_library(coap-pp STATIC
     src/coap_pp/server/resource.cpp
 )
 
-target_compile_features(coap-pp PUBLIC cxx_std_20)
+target_compile_features(coap-pp PUBLIC cxx_std_17)
 target_link_libraries(coap-pp PRIVATE coap-pp-warnings)
 target_compile_definitions(coap-pp PUBLIC COAP_PP_LOG_LEVEL=${COAP_PP_LOG_LEVEL})
 if(DEFINED COAP_PP_NO_STD_SPAN)
@@ -56,7 +56,7 @@ add_library(coap-pp-transport-udp-ip-slip STATIC
     src/coap_pp_transport_udp_ip_slip/udp_ip_slip_transport.cpp
 )
 target_link_libraries(coap-pp-transport-udp-ip-slip PUBLIC coap-pp Threads::Threads PRIVATE coap-pp-warnings)
-target_compile_features(coap-pp-transport-udp-ip-slip PUBLIC cxx_std_20)
+target_compile_features(coap-pp-transport-udp-ip-slip PUBLIC cxx_std_17)
 
 # nanopb serde
 option(COAP_PP_BUILD_SERDE_NANOPB "Build nanopb-based serde support" ON)
@@ -95,7 +95,7 @@ if(UNIX)
             src/coap_pp_transport_posix/udp_transport.cpp
         )
         target_link_libraries(coap-pp-transport-posix PUBLIC coap-pp Threads::Threads PRIVATE coap-pp-warnings coap-pp-serde-nanopb)
-        target_compile_features(coap-pp-transport-posix PUBLIC cxx_std_20)
+        target_compile_features(coap-pp-transport-posix PUBLIC cxx_std_17)
 
         option(COAP_PP_BUILD_EXAMPLES "Build example programs" ON)
         if(COAP_PP_BUILD_EXAMPLES)

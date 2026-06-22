@@ -22,25 +22,41 @@ import hello_world_pb2
 BASE_URI = "coap://127.0.0.1:5683"
 
 
+async def get(ctx, path):
+    req = aiocoap.Message(code=aiocoap.GET, uri=f"{BASE_URI}{path}")
+    print(f"GET {path} ...", end=" ", flush=True)
+    resp = await ctx.request(req).response
+    body = resp.payload.decode(errors="replace") if resp.payload else ""
+    print(f"{resp.code}  {body!r}")
+
+
+async def post_pb(ctx, path, request_msg, response_type=None):
+    req = aiocoap.Message(
+        code=aiocoap.POST,
+        uri=f"{BASE_URI}{path}",
+        payload=request_msg.SerializeToString(),
+    )
+    print(f"POST {path} ...", end=" ", flush=True)
+    resp = await ctx.request(req).response
+    if response_type and resp.payload:
+        msg = response_type()
+        msg.ParseFromString(resp.payload)
+        print(f"{resp.code}  {msg}")
+    else:
+        body = resp.payload.decode(errors="replace") if resp.payload else ""
+        print(f"{resp.code}  {body!r}")
+
+
 async def main():
     ctx = await aiocoap.Context.create_client_context()
 
-    requests = [
-        ("GET",  "/hello",          None),                                                        # 2.05 Content: "Hello, CoAP World!"
-        ("GET",  "/slow",           None),                                                        # 2.05 Content after ~2 s delay
-        ("POST", "/hello",          None),                                                        # 4.05 Method Not Allowed
-        ("GET",  "/other",          None),                                                        # 4.04 Not Found
-        ("POST", "/hello-world-pb", hello_world_pb2.HelloRequest(name="World").SerializeToString()),  # 2.05 Content
-        ("POST", "/hello-lambda-pb", hello_world_pb2.HelloRequest(name="World").SerializeToString()),  # 2.05 Content
-    ]
+    hello_req = hello_world_pb2.HelloRequest(name="World")
 
-    for method, path, payload in requests:
-        code = aiocoap.GET if method == "GET" else aiocoap.POST
-        req = aiocoap.Message(code=code, uri=f"{BASE_URI}{path}", payload=payload or b"")
-        print(f"{method} {path} ...", end=" ", flush=True)
-        resp = await ctx.request(req).response
-        body = resp.payload.decode(errors="replace") if resp.payload else ""
-        print(f"{resp.code}  {body!r}")
+    await get(ctx, "/hello")                                                  # 2.05 Content: "Hello, CoAP World!"
+    await get(ctx, "/slow")                                                   # 2.05 Content after ~2 s delay
+    await get(ctx, "/other")                                                  # 4.04 Not Found
+    await post_pb(ctx, "/hello-world-pb", hello_req, hello_world_pb2.HelloResponse)  # 2.05 HelloResponse
+    await post_pb(ctx, "/hello-lambda-pb", hello_req, hello_world_pb2.HelloResponse) # 2.05 HelloResponse
 
     await ctx.shutdown()
 

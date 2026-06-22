@@ -7,63 +7,131 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <variant>
 
-#ifdef COAP_PP_USE_INPLACE_FUNCTION
-#include "coap_pp/util/inplace_function.hpp"
-#else
-#include <functional>
-#endif
-
+#include "coap_pp/content_formats.hpp"
 #include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/option.hpp"
+#include "coap_pp/pdu/serialize.hpp"
+#include "coap_pp/serde/serialize.hpp"
 #include "coap_pp/transport/endpoint.hpp"
+#include "coap_pp/util/function.hpp"
 #include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
 
 class CoapServer;
 
-// Outbound response returned by a resource handler.
-// payload and content_format are optional; leave at defaults to send code-only
-// responses.
-struct Response {
-  static constexpr uint32_t kNoContentFormat = ~0u;
-
+// Wire-level response ready to be serialized by CoapServer.
+// serialize_payload is called once, synchronously, during message
+// serialization.
+struct WireResponse {
   Code code{codes::kContent};
-  span<const std::byte> payload{};
-  uint32_t content_format{kNoContentFormat};
+  SerializePayloadCallback serialize_payload{};
+  ContentFormat content_format{ContentFormat::kNoContentFormat};
 };
 
-// Deferred response handle. Returned from a handler to signal async dispatch;
-// call Send() at any later time to deliver the actual response.
-//
-// AsyncResponse is copyable — the handler stores one copy and returns another.
-// Each copy independently tracks routing info; only one copy should call
-// Send().
-class AsyncResponse {
- public:
-  AsyncResponse() = default;  // null state; Send() is a no-op
+// Callable passed to every RequestHandler. Call it (exactly once) to deliver
+// the response. Takes WireResponse by value so the pipeline can move the
+// callback through without copying.
+using WireSender = function<void(const WireResponse&)>;
 
-  // Routing context is populated by RawRequest::MakeAsync() — not for direct
-  // use.
-  AsyncResponse(CoapServer& server, const Endpoint& endpoint,
-                MessageType req_type, uint16_t req_mid, const Token& token);
+// Typed outbound response returned by a resource handler.
+// payload and content_format are optional; leave at defaults to send code-only
+// responses.
+template <typename T>
+struct Response {
+  using BodyType = T;
 
-  void Send(const Response& resp);
+  Code code{codes::kContent};
+  T payload{};
+  ContentFormat content_format{ContentFormat::kNoContentFormat};
+};
 
- private:
-  friend class CoapServer;
+// Deduction guides — required in C++17 (aggregate CTAD is a C++20 feature).
+template <typename T>
+Response(Code, T, ContentFormat) -> Response<T>;
+template <typename T>
+Response(Code, T) -> Response<T>;
+
+// ── AsyncResponseBase
+// ───────────────────────────────────────────────────────── Non-template base
+// for AsyncResponse<S>. Holds the routing data members and the SendWireResponse
+// method whose implementation lives in resource.cpp — the only translation unit
+// that can include both resource.hpp and coap_server.hpp without a circular
+// dependency.  This is a deliberate structural split: CoapServer is an
+// incomplete type here, so any call to server_->SendResponse(...) must be
+// deferred to the .cpp file.
+class AsyncResponseBase {
+ protected:
+  AsyncResponseBase() = default;
+  AsyncResponseBase(CoapServer& server, const Endpoint& endpoint,
+                    MessageType req_type, uint16_t req_mid, const Token& token)
+      : server_{&server},
+        endpoint_{endpoint},
+        token_{token},
+        req_mid_{req_mid},
+        req_type_{req_type} {}
+
+  void SendWireResponse(const WireResponse& resp);
+
   CoapServer* server_{nullptr};
   Endpoint endpoint_{};
   Token token_{};
   uint16_t req_mid_{0};
   MessageType req_type_{};
+
+ private:
+  friend class CoapServer;
 };
 
-// Raw inbound request as received from the network.
-// Handlers registered via Router<Deser>::Bind<MemFn>(self) receive this type
-// when no PayloadType is specified.
+// ── AsyncResponse
+// ───────────────────────────────────────────────────────────── Deferred
+// response handle. Returned from a handler to signal async dispatch; call
+// Send() at any later time to deliver the actual response.
+//
+// AsyncResponse is copyable — the handler stores one copy and returns another.
+// Each copy independently tracks routing info; only one copy should call
+// Send().
+//
+// The Serializer template parameter enables Send(Response<T>) for typed
+// payloads.  Defaults to NoopSerializer, which only supports raw-byte
+//  Send(WireResponse).
+template <typename Serializer = NoopSerializer>
+class AsyncResponse : public AsyncResponseBase {
+ public:
+  AsyncResponse() = default;
+
+  // Populated by RawRequest::MakeAsync() — not for direct construction.
+  AsyncResponse(CoapServer& server, const Endpoint& endpoint,
+                MessageType req_type, uint16_t req_mid, const Token& token)
+      : AsyncResponseBase{server, endpoint, req_type, req_mid, token} {}
+
+  void Send(const WireResponse& resp) { SendWireResponse(resp); }
+
+  // Payload is referenced directly — no copy into the closure.
+  // SendWireResponse is synchronous so resp outlives the callback invocation.
+  template <typename T>
+  void Send(const Response<T>& resp) {
+    WireResponse wire{resp.code, {}, resp.content_format};
+    if constexpr (std::is_same_v<T, span<const std::byte>>) {
+      if (!resp.payload.empty()) {
+        wire.serialize_payload = RawBytesSerializeCallback(resp.payload);
+      }
+    } else {
+      if (wire.content_format == ContentFormat::kNoContentFormat) {
+        wire.content_format = Serializer::kContentFormat;
+      }
+      wire.serialize_payload =
+          SerializerSerializeCallback<Serializer>(resp.payload);
+    }
+    SendWireResponse(wire);
+  }
+};
+
+// ── RawRequest
+// ──────────────────────────────────────────────────────────────── Raw inbound
+// request as received from the network. Handlers registered via Router<Ser,
+// Deser>::Bind receive this type when no payload deserialization is needed.
 //
 // NOTE: options and payload are non-owning views into the receive buffer —
 // copy any data you need before the handler returns.
@@ -79,13 +147,17 @@ struct RawRequest {
 
   // Creates an AsyncResponse preloaded with the routing info for this request.
   // Store the returned handle; return it (or a copy) from the handler.
-  AsyncResponse MakeAsync() const;
+  // Ser defaults to NoopSerializer for raw-byte async handlers.
+  template <typename Ser = NoopSerializer>
+  AsyncResponse<Ser> MakeAsync() const {
+    return AsyncResponse<Ser>{*server_, sender_, req_type_, req_mid_, token_};
+  }
 
  private:
   template <typename>
   friend struct Request;  // Request<T> copies routing context from RawRequest
-  template <typename>
-  friend class Router;  // Router<Deser>::Bind may need routing context
+  template <typename, typename>
+  friend class Router;  // Router<Ser, Deser>::Bind may need routing context
 
   CoapServer* server_;
   Endpoint sender_;
@@ -94,10 +166,11 @@ struct RawRequest {
   Token token_;
 };
 
-// Typed inbound request — payload already deserialized to T.
-// Handlers registered via Router<Deser>::Bind<MemFn, T>(self) receive this
-// type.  If deserialization fails the server returns 4.00 Bad Request and the
-// handler is not called.
+// ── Request<T>
+// ──────────────────────────────────────────────────────────────── Typed
+// inbound request — payload already deserialized to T. Handlers registered via
+// Router<Ser, Deser>::Bind<MemFn>(self) receive this type.  If deserialization
+// fails the server returns 4.00 Bad Request and the handler is not called.
 template <typename T>
 struct Request {
   Code method;
@@ -106,13 +179,14 @@ struct Request {
 
   const T& Body() const { return body_; }
 
-  AsyncResponse MakeAsync() const {
-    return AsyncResponse{*server_, sender_, req_type_, req_mid_, token_};
+  template <typename Ser = NoopSerializer>
+  AsyncResponse<Ser> MakeAsync() const {
+    return AsyncResponse<Ser>{*server_, sender_, req_type_, req_mid_, token_};
   }
 
  private:
-  template <typename>
-  friend class Router;  // Router<Deser>::Bind constructs Request<T>
+  template <typename, typename>
+  friend class Router;  // Router<Ser, Deser>::Bind constructs Request<T>
 
   Request(const RawRequest& base, T body)
       : method(base.method),
@@ -133,18 +207,13 @@ struct Request {
   Token token_;
 };
 
-// A handler may respond immediately (Response) or defer via AsyncResponse.
-using HandlerResult = std::variant<Response, AsyncResponse>;
+enum class HandlerResult {
+  kSync,
+  kAsync,
+};
 
 // Handler callable. May capture state (e.g. [this]).
-// Stored via std::function by default; set COAP_PP_USE_INPLACE_FUNCTION (CMake
-// option) to use a fixed-buffer inplace_function instead (no heap allocation).
-#ifdef COAP_PP_USE_INPLACE_FUNCTION
-using RequestHandler = inplace_function<HandlerResult(const RawRequest&),
-                                        COAP_PP_INPLACE_FUNCTION_CAPACITY>;
-#else
-using RequestHandler = std::function<HandlerResult(const RawRequest&)>;
-#endif
+using RequestHandler = function<HandlerResult(const RawRequest&, WireSender&)>;
 
 }  // namespace coap_pp
 

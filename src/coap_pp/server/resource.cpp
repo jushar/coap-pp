@@ -8,7 +8,8 @@
 
 namespace coap_pp {
 
-// ── RawRequest ────────────────────────────────────────────────────────────────
+// ── RawRequest
+// ────────────────────────────────────────────────────────────────
 
 RawRequest::RawRequest(Code method, OptionsView options,
                        span<const std::byte> payload, CoapServer& server,
@@ -23,25 +24,12 @@ RawRequest::RawRequest(Code method, OptionsView options,
       req_mid_(req_mid),
       token_(token) {}
 
-AsyncResponse RawRequest::MakeAsync() const {
-  return AsyncResponse{*server_, sender_, req_type_, req_mid_, token_};
-}
+// ── AsyncResponseBase
+// ─────────────────────────────────────────────────────────
 
-// ── AsyncResponse
-// ─────────────────────────────────────────────────────────────
-
-AsyncResponse::AsyncResponse(CoapServer& server, const Endpoint& endpoint,
-                             MessageType req_type, uint16_t req_mid,
-                             const Token& token)
-    : server_{&server},
-      endpoint_{endpoint},
-      token_{token},
-      req_mid_{req_mid},
-      req_type_{req_type} {}
-
-void AsyncResponse::Send(const Response& resp) {
+void AsyncResponseBase::SendWireResponse(const WireResponse& resp) {
   if (server_ == nullptr) return;
-  server_->SendAsyncResponse(endpoint_, req_type_, req_mid_, token_, resp);
+  server_->SendResponse(endpoint_, req_type_, req_mid_, token_, false, resp);
 }
 
 }  // namespace coap_pp
