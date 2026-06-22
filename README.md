@@ -57,8 +57,9 @@ cd build && ctest --output-on-failure --parallel
 ## Quick start
 
 ```cpp
+#include "coap_pp/content_formats.hpp"
+#include "coap_pp/log.hpp"
 #include "coap_pp/messaging/messenger.hpp"
-#include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/server/coap_server.hpp"
 #include "coap_pp/server/router.hpp"
 #include "coap_pp_transport_posix/udp_transport.hpp"
@@ -78,19 +79,22 @@ int main() {
     Messenger messenger{transport, con_pool};
 
     // 3. Server
-    std::array<Router*, 4> router_storage{};
+    std::array<RouterBase*, 4> router_storage{};
     CoapServer server{messenger, router_storage};
 
-    // 4. Route handler
-    auto handle_hello = [](const Request&) -> HandlerResult {
-        static constexpr std::string_view kBody = "Hello, CoAP!";
-        return Response{codes::kContent,
-                        std::as_bytes(std::span{kBody.data(), kBody.size()}), 0u};
-    };
+    // 4. Routes
+    static const std::array<Route, 1> kRoutes{{{
+        codes::kGet, "/hello",
+        Router<>::Bind([](const RawRequest&) {
+            static constexpr std::string_view kBody = "Hello, CoAP!";
+            return Response{codes::kContent,
+                            as_bytes(span{kBody.data(), kBody.size()}),
+                            ContentFormat::kTextPlain};
+        })
+    }}};
 
     // 5. Router
-    static const std::array<Route, 1> kRoutes{{{codes::kGet, "/hello", handle_hello}}};
-    static Router api{"", kRoutes};
+    static Router<> api{"", kRoutes};
     server.AddRouter(api);
 
     // 6. Start + tick loop
@@ -127,9 +131,9 @@ UdpIpSlipTransport transport{serial, {192, 168, 1, 1}, 5683};
 auto ep = UdpIpSlipTransport::MakeEndpoint({192, 168, 1, 2}, 5683);
 ```
 
-## NanoPB deserialization (`coap-pp-serde-nanopb`)
+## NanoPB serialization (`coap-pp-serde-nanopb`)
 
-The `coap-pp-serde-nanopb` layer automatically deserializes protobuf payloads into typed request objects using [NanoPB](https://jpa.kapsi.fi/nanopb/).
+The `coap-pp-serde-nanopb` layer automatically deserializes protobuf request payloads and serializes protobuf response payloads using [NanoPB](https://jpa.kapsi.fi/nanopb/).
 
 **1. Generate `NanopbFields` specializations from your proto file:**
 
@@ -166,16 +170,17 @@ struct coap_pp::NanopbFields<MyMessage> {
 **2. Write a typed handler — the payload is decoded before your handler runs:**
 
 ```cpp
-HandlerResult HandleMyMessage(const Request<MyMessage>& request) {
-    const MyMessage& msg = request.Body();
+auto HandleMyMessage(const Request<MyRequest>& request) {
+    const MyRequest& msg = request.Body();
     // use msg.field_name ...
-    return Response{codes::kContent, payload, 0u};
+    MyResponse response{.greeting = "Hello!"};
+    return Response{codes::kContent, response};
 }
 ```
 
-If decoding fails, the server automatically responds with `4.00 Bad Request` before calling your handler.
+The return type `Response<MyResponse>` is automatically serialized by the router via NanoPB. If decoding the request fails, the server automatically responds with `4.00 Bad Request` before calling your handler.
 
-**3. Register routes with `NanopbRouter` instead of the plain `Router`:**
+**3. Register routes with `NanopbRouter`:**
 
 ```cpp
 static std::array<Route, 1> routes{{
@@ -189,9 +194,9 @@ server.AddRouter(router);
 Lambdas are also supported:
 
 ```cpp
-NanopbRouter::Bind([](const Request<MyMessage>& request) {
+NanopbRouter::Bind([](const Request<MyRequest>& request) {
     std::cout << request.Body().name << "\n";
-    return Response{codes::kContent, payload, 0u};
+    return Response{codes::kContent, MyResponse{.greeting = "hello from lambda"}};
 })
 ```
 
@@ -202,11 +207,13 @@ See [examples/hello_world.cpp](examples/hello_world.cpp) for a complete working 
 Handlers can defer their reply — useful for slow operations. The server sends an empty ACK immediately (stopping CON retransmissions) and the handler delivers the real response later from any thread:
 
 ```cpp
-HandlerResult HandleSlow(const Request& req) {
+auto HandleSlow(const RawRequest& req) {
     auto async = req.MakeAsync();
     std::thread([a = async]() mutable {
         std::this_thread::sleep_for(std::chrono::seconds{2});
-        a.Send(Response{codes::kContent, payload, 0u});
+        a.Send(Response{codes::kContent,
+                        as_bytes(span{kSlowText.data(), kSlowText.size()}),
+                        ContentFormat::kTextPlain});
     }).detach();
     return async;
 }
