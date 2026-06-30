@@ -1,0 +1,2 @@
+SensorReading.unit      max_size:16
+SetpointResponse.message max_size:64

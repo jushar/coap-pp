@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+// Simple messages used exclusively by the coap_pp_serde_nanopb integration
+// tests.  Keep fields small so nanopb static allocation stays cheap.
+
+message SensorReading {
+    uint32 sensor_id = 1;
+    float  value     = 2;
+    string unit      = 3;
+}
+
+message SetpointRequest {
+    uint32 sensor_id = 1;
+    float  target    = 2;
+}
+
+message SetpointResponse {
+    bool   accepted = 1;
+    string message  = 2;
+}

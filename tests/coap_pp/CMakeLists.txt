@@ -7,10 +7,12 @@ add_executable(coap-pp-tests
     pdu/test_serialize.cpp
     server/test_server.cpp
     transport/test_endpoint.cpp
+    util/test_inplace_function.cpp
 )
 
 target_link_libraries(coap-pp-tests PRIVATE
     coap-pp
+    coap-pp-fakes
     GTest::gtest_main
 )
 

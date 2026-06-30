@@ -14,4 +14,9 @@ FetchContent_MakeAvailable(googletest)
 
 include(GoogleTest)
 
+add_subdirectory(fakes)
 add_subdirectory(coap_pp)
+
+if(COAP_PP_BUILD_SERDE_NANOPB)
+    add_subdirectory(coap_pp_serde_nanopb)
+endif()

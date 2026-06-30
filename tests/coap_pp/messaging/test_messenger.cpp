@@ -8,49 +8,10 @@
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/util/memory_pool.hpp"
-#include "coap_pp/util/static_vector.hpp"
+#include "fakes/fake_transport.hpp"
 
 namespace coap_pp {
 namespace {
-
-// ── Mock transport
-// ────────────────────────────────────────────────────────────
-
-struct RecordedSend {
-  Endpoint destination{};
-  std::array<std::byte, kMaxMessageSize> data{};
-  std::size_t size{0};
-};
-
-static constexpr std::size_t kMaxRecordedSends = 16;
-
-class MockTransport : public TransportIF {
- public:
-  TransportError Start() override { return TransportError::kOk; }
-  void Stop() override {}
-
-  TransportError Send(const Endpoint& dest,
-                      span<const std::byte> data) override {
-    if (sends_.full()) return {};
-    sends_.push_back({});
-    auto& r = sends_.back();
-    r.destination = dest;
-    r.size = data.size();
-    std::copy(data.begin(), data.end(), r.data.begin());
-    return {};
-  }
-
-  void SetReceiver(TransportReceiverIF& r) override { receiver_ = &r; }
-  Endpoint LocalEndpoint() const override { return {}; }
-
-  // Simulate receiving a datagram.
-  void InjectReceive(const Endpoint& sender, span<const std::byte> data) {
-    if (receiver_) receiver_->OnReceive(sender, data);
-  }
-
-  StaticVector<RecordedSend, kMaxRecordedSends> sends_{};
-  TransportReceiverIF* receiver_{nullptr};
-};
 
 // ── Mock handler
 // ──────────────────────────────────────────────────────────────
@@ -88,7 +49,7 @@ class MockHandler : public MessageHandlerIF {
 
 class MessengerTest : public ::testing::Test {
  protected:
-  MockTransport transport_;
+  fakes::FakeTransport transport_;
   MemoryPool<Messenger::PendingSlot, 4> pool_{};
   Messenger messenger_{transport_, pool_};
   MockHandler handler_;
@@ -218,7 +179,7 @@ TEST_F(MessengerTest, ReceiveACK_ClearsPendingSlot) {
   ASSERT_EQ(messenger_.Send(Endpoint{}, b.Build()), MessengerError::kOk);
 
   auto [ack_bytes, ack_size] = MakeAckBytes(0x0010u);
-  transport_.InjectReceive(
+  transport_.Inject(
       Endpoint{}, span<const std::byte>{ack_bytes.data(), ack_size});
 
   EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
@@ -234,7 +195,7 @@ TEST_F(MessengerTest, ReceiveRST_ClearsPendingSlot) {
   ASSERT_EQ(messenger_.Send(Endpoint{}, b.Build()), MessengerError::kOk);
 
   auto [rst_bytes, rst_size] = MakeRstBytes(0x0020u);
-  transport_.InjectReceive(
+  transport_.Inject(
       Endpoint{}, span<const std::byte>{rst_bytes.data(), rst_size});
 
   EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
@@ -252,7 +213,7 @@ TEST_F(MessengerTest, OnReceive_DispatchesToHandler) {
   std::size_t written = 0u;
   (void)Serialize(b.Build(), buf, written);
 
-  transport_.InjectReceive(Endpoint{},
+  transport_.Inject(Endpoint{},
                            span<const std::byte>{buf.data(), written});
 
   EXPECT_EQ(handler_.message_count_, 1);
@@ -264,7 +225,7 @@ TEST_F(MessengerTest, OnReceive_MalformedDatagram_SilentlyDiscarded) {
   // 3 bytes — too short to be a valid CoAP message.
   const auto bad =
       std::array{std::byte{0x40}, std::byte{0x01}, std::byte{0x00}};
-  transport_.InjectReceive(Endpoint{}, bad);
+  transport_.Inject(Endpoint{}, bad);
 
   EXPECT_EQ(handler_.message_count_, 0);
 }

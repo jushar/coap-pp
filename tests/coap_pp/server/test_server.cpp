@@ -7,77 +7,20 @@
 #include "coap_pp/content_formats.hpp"
 #include "coap_pp/option_number.hpp"
 #include "coap_pp/pdu/builder.hpp"
-#include "coap_pp/pdu/deserialize.hpp"
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/server/coap_server.hpp"
 #include "coap_pp/server/resource.hpp"
-#include "coap_pp/util/static_vector.hpp"
+#include "fakes/fake_transport.hpp"
 
 namespace coap_pp {
 namespace {
-
-// ── Mock transport
-// ────────────────────────────────────────────────────────────
-
-struct RecordedSend {
-  Endpoint destination{};
-  std::array<std::byte, kMaxMessageSize> data{};
-  std::size_t size{0};
-};
-
-static constexpr std::size_t kMaxRecordedSends = 16;
-
-class MockTransport : public TransportIF {
- public:
-  TransportError Start() override { return TransportError::kOk; }
-  void Stop() override {}
-
-  TransportError Send(const Endpoint& dest,
-                      span<const std::byte> data) override {
-    if (!sends_.full()) {
-      sends_.push_back({});
-      auto& r = sends_.back();
-      r.destination = dest;
-      r.size = data.size();
-      std::copy(data.begin(), data.end(), r.data.begin());
-    }
-    return {};
-  }
-
-  void SetReceiver(TransportReceiverIF& r) override { receiver_ = &r; }
-  Endpoint LocalEndpoint() const override { return {}; }
-
-  void Inject(const Endpoint& sender, span<const std::byte> data) {
-    if (receiver_) receiver_->OnReceive(sender, data);
-  }
-
-  Message DeserializeFirstResponse() const {
-    EXPECT_GT(sends_.size(), 0u);
-    Message m{};
-    (void)Deserialize(
-        span<const std::byte>{sends_[0].data.data(), sends_[0].size}, m);
-    return m;
-  }
-
-  Message DeserializeResponseAt(std::size_t index) const {
-    EXPECT_GT(sends_.size(), index);
-    Message m{};
-    (void)Deserialize(
-        span<const std::byte>{sends_[index].data.data(), sends_[index].size},
-        m);
-    return m;
-  }
-
-  StaticVector<RecordedSend, kMaxRecordedSends> sends_{};
-  TransportReceiverIF* receiver_{nullptr};
-};
 
 // ── Fixture
 // ───────────────────────────────────────────────────────────────────
 
 class ServerTest : public ::testing::Test {
  protected:
-  MockTransport transport_;
+  fakes::FakeTransport transport_;
   MemoryPool<Messenger::PendingSlot, 4> pool_{};
   Messenger messenger_{transport_, pool_};
 
