@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <string_view>
 #include <variant>
 
@@ -158,7 +159,14 @@ class OptionsView {
   }
 
   [[nodiscard]] bool empty() const { return raw_.empty(); }
-  [[nodiscard]] span<const std::byte> raw() const { return raw_; }
+
+  [[nodiscard]] std::optional<OptionView> FindOption(
+      OptionNumber number) const {
+    for (const auto& opt : *this) {
+      if (opt.number == number) return opt;
+    }
+    return std::nullopt;
+  }
 
  private:
   span<const std::byte> raw_{};

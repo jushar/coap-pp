@@ -55,6 +55,12 @@ if(COAP_PP_BUILD_SERDE_NANOPB)
     add_subdirectory(src/coap_pp_serde_nanopb)
 endif()
 
+# nlohmann/json serde
+option(COAP_PP_BUILD_SERDE_JSON "Build nlohmann/json-based serde support" ON)
+if(COAP_PP_BUILD_SERDE_JSON)
+    add_subdirectory(src/coap_pp_serde_json)
+endif()
+
 # POSIX transport + examples (Linux / macOS only)
 option(COAP_PP_BUILD_POSIX_TRANSPORT "Build the POSIX UDP transport" ON)
 if(COAP_PP_BUILD_POSIX_TRANSPORT)

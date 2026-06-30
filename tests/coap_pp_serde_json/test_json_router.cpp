@@ -4,20 +4,52 @@
  */
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstring>
+#include <string>
+#include <string_view>
 
+#include "coap_pp/content_formats.hpp"
 #include "coap_pp/messaging/messenger.hpp"
 #include "coap_pp/option_number.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/server/coap_server.hpp"
 #include "coap_pp/server/resource.hpp"
-#include "coap_pp_serde_nanopb/deserializer.hpp"
-#include "coap_pp_serde_nanopb/router.hpp"
-#include "coap_pp_serde_nanopb/serializer.hpp"
+#include "coap_pp_serde_json/deserializer.hpp"
+#include "coap_pp_serde_json/router.hpp"
+#include "coap_pp_serde_json/serializer.hpp"
 #include "fakes/fake_transport.hpp"
-#include "serde_test.coap_pp_fields.hpp"
-#include "serde_test.pb.h"
+
+// ── Test types
+// ──────────────────────────────────────────────────────────────── Defined at
+// file scope so that ADL can locate the to_json / from_json functions generated
+// by the macro (they live in the same namespace as the struct, which must be
+// visible at the call site in nlohmann internals).
+
+struct SensorReading {
+  uint32_t sensor_id{};
+  float value{};
+  std::string unit{};
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(SensorReading, sensor_id, value,
+                                                unit)
+
+struct SetpointRequest {
+  uint32_t sensor_id{};
+  float target{};
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(SetpointRequest, sensor_id,
+                                                target)
+
+struct SetpointResponse {
+  bool accepted{};
+  std::string message{};
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(SetpointResponse, accepted,
+                                                message)
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 namespace coap_pp {
 namespace {
@@ -25,12 +57,9 @@ namespace {
 // ── Helpers
 // ───────────────────────────────────────────────────────────────────
 
-// Encodes a nanopb message into a fixed-size buffer with the written length
-// tracked separately.  Call .View() to get a span<const std::byte> over the
-// valid bytes without involving std::vector.
 template <typename T>
 struct Encoded {
-  std::array<std::byte, NanopbFields<T>::kMaxEncodedSize> buf{};
+  std::array<std::byte, 4096> buf{};
   std::size_t size{0};
   span<const std::byte> View() const { return {buf.data(), size}; }
 };
@@ -38,7 +67,7 @@ struct Encoded {
 template <typename T>
 Encoded<T> Encode(const T& msg) {
   Encoded<T> out{};
-  const auto err = NanopbSerializer::Serialize(msg, out.buf, out.size);
+  const auto err = JsonSerializer::Serialize(msg, out.buf, out.size);
   [&] { ASSERT_EQ(err, SerializeError::kOk); }();
   return out;
 }
@@ -46,7 +75,7 @@ Encoded<T> Encode(const T& msg) {
 // ── Fixture
 // ───────────────────────────────────────────────────────────────────
 
-class NanopbRouterTest : public ::testing::Test {
+class JsonRouterTest : public ::testing::Test {
  protected:
   fakes::FakeTransport transport_;
   MemoryPool<Messenger::PendingSlot, 4> pool_{};
@@ -83,17 +112,15 @@ class NanopbRouterTest : public ::testing::Test {
 // ── GET: serialization of response
 // ────────────────────────────────────────────
 
-// A GET endpoint returns a typed Response<SensorReading>.  The router must
-// serialize the struct via NanopbSerializer and place the bytes on the wire.
-TEST_F(NanopbRouterTest, Get_TypedResponse_PayloadDeserializesCorrectly) {
+TEST_F(JsonRouterTest, Get_TypedResponse_PayloadDeserializesCorrectly) {
   const SensorReading expected{.sensor_id = 7, .value = 3.14f, .unit = "°C"};
 
   const std::array<Route, 1> routes{{
-      {codes::kGet, "/sensor", NanopbRouter::Bind([&](const RawRequest&) {
+      {codes::kGet, "/sensor", JsonRouter::Bind([&](const RawRequest&) {
          return Response{codes::kContent, expected};
        })},
   }};
-  NanopbRouter router{"", routes};
+  JsonRouter router{"", routes};
   server_.AddRouter(router);
 
   InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/sensor");
@@ -103,21 +130,20 @@ TEST_F(NanopbRouterTest, Get_TypedResponse_PayloadDeserializesCorrectly) {
   EXPECT_EQ(wire.code, codes::kContent);
 
   const auto decoded =
-      NanopbDeserializer::Deserialize<SensorReading>(wire.payload);
+      JsonDeserializer::Deserialize<SensorReading>(wire.payload);
   ASSERT_TRUE(decoded.has_value());
   EXPECT_EQ(decoded->sensor_id, expected.sensor_id);
   EXPECT_FLOAT_EQ(decoded->value, expected.value);
-  EXPECT_STREQ(decoded->unit, expected.unit);
+  EXPECT_EQ(decoded->unit, expected.unit);
 }
 
-// The serializer must set Content-Format to application/octet-stream (42).
-TEST_F(NanopbRouterTest, Get_TypedResponse_ContentFormatIsOctetStream) {
+TEST_F(JsonRouterTest, Get_TypedResponse_ContentFormatIsJson) {
   const std::array<Route, 1> routes{{
-      {codes::kGet, "/sensor", NanopbRouter::Bind([](const RawRequest&) {
+      {codes::kGet, "/sensor", JsonRouter::Bind([](const RawRequest&) {
          return Response{codes::kContent, SensorReading{.sensor_id = 1}};
        })},
   }};
-  NanopbRouter router{"", routes};
+  JsonRouter router{"", routes};
   server_.AddRouter(router);
 
   InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/sensor");
@@ -127,25 +153,23 @@ TEST_F(NanopbRouterTest, Get_TypedResponse_ContentFormatIsOctetStream) {
 
   const auto opt = wire.options.FindOption(OptionNumber::kContentFormat);
   ASSERT_TRUE(opt.has_value()) << "Content-Format option missing from response";
-  EXPECT_EQ(std::get<uint32_t>(opt->value), 42u);
+  EXPECT_EQ(std::get<uint32_t>(opt->value), ContentFormat::kJson.Value());
 }
 
 // ── POST: deserialization of request payload
 // ──────────────────────────────────
 
-// A POST with a valid nanopb-encoded payload must reach the handler with the
-// correct deserialized struct.
-TEST_F(NanopbRouterTest, Post_ValidPayload_HandlerReceivesDeserializedBody) {
+TEST_F(JsonRouterTest, Post_ValidPayload_HandlerReceivesDeserializedBody) {
   SetpointRequest received{};
 
   const std::array<Route, 1> routes{{
       {codes::kPost, "/setpoint",
-       NanopbRouter::Bind([&](const Request<SetpointRequest>& req) {
+       JsonRouter::Bind([&](const Request<SetpointRequest>& req) {
          received = req.Body();
          return Response{codes::kChanged, SetpointResponse{.accepted = true}};
        })},
   }};
-  NanopbRouter router{"", routes};
+  JsonRouter router{"", routes};
   server_.AddRouter(router);
 
   const SetpointRequest req_body{.sensor_id = 3, .target = 22.5f};
@@ -158,18 +182,16 @@ TEST_F(NanopbRouterTest, Post_ValidPayload_HandlerReceivesDeserializedBody) {
   EXPECT_FLOAT_EQ(received.target, req_body.target);
 }
 
-// The response from a POST handler must also be serialized correctly.
-TEST_F(NanopbRouterTest,
-       Post_ValidPayload_ResponsePayloadDeserializesCorrectly) {
+TEST_F(JsonRouterTest, Post_ValidPayload_ResponsePayloadDeserializesCorrectly) {
   const SetpointResponse expected{.accepted = true, .message = "ok"};
 
   const std::array<Route, 1> routes{{
       {codes::kPost, "/setpoint",
-       NanopbRouter::Bind([&](const Request<SetpointRequest>&) {
+       JsonRouter::Bind([&](const Request<SetpointRequest>&) {
          return Response{codes::kChanged, expected};
        })},
   }};
-  NanopbRouter router{"", routes};
+  JsonRouter router{"", routes};
   server_.AddRouter(router);
 
   const auto bytes = Encode(SetpointRequest{.sensor_id = 1, .target = 0.0f});
@@ -181,34 +203,32 @@ TEST_F(NanopbRouterTest,
   EXPECT_EQ(wire.code, codes::kChanged);
 
   const auto decoded =
-      NanopbDeserializer::Deserialize<SetpointResponse>(wire.payload);
+      JsonDeserializer::Deserialize<SetpointResponse>(wire.payload);
   ASSERT_TRUE(decoded.has_value());
   EXPECT_EQ(decoded->accepted, expected.accepted);
-  EXPECT_STREQ(decoded->message, expected.message);
+  EXPECT_EQ(decoded->message, expected.message);
 }
 
 // ── POST: deserialization failures ───────────────────────────────────────────
 
-// Garbage bytes that cannot be decoded must yield 4.00 Bad Request without
-// calling the handler.
-TEST_F(NanopbRouterTest, Post_GarbagePayload_ReturnsBadRequest) {
+TEST_F(JsonRouterTest, Post_GarbagePayload_ReturnsBadRequest) {
   bool handler_called = false;
 
   const std::array<Route, 1> routes{{
       {codes::kPost, "/setpoint",
-       NanopbRouter::Bind([&](const Request<SetpointRequest>&) {
+       JsonRouter::Bind([&](const Request<SetpointRequest>&) {
          handler_called = true;
          return Response{codes::kChanged, SetpointResponse{}};
        })},
   }};
-  NanopbRouter router{"", routes};
+  JsonRouter router{"", routes};
   server_.AddRouter(router);
 
-  // Malformed varint — continuation bit set on every byte with no terminator.
-  const std::array<std::byte, 5> garbage{std::byte{0xFF}, std::byte{0xFF},
-                                         std::byte{0xFF}, std::byte{0xFF},
-                                         std::byte{0xFF}};
-  InjectRequest(MessageType::kNon, codes::kPost, 0x0004u, "/setpoint", garbage);
+  const std::string_view garbage = "{not valid json!!!";
+  InjectRequest(
+      MessageType::kNon, codes::kPost, 0x0004u, "/setpoint",
+      span<const std::byte>{reinterpret_cast<const std::byte*>(garbage.data()),
+                            garbage.size()});
 
   EXPECT_FALSE(handler_called);
   ASSERT_EQ(transport_.sends_.size(), 1u);
@@ -216,26 +236,29 @@ TEST_F(NanopbRouterTest, Post_GarbagePayload_ReturnsBadRequest) {
   EXPECT_EQ(wire.code, codes::kBadRequest);
 }
 
-// ── Empty payload (proto3 all-defaults) ──────────────────────────────────────
+// ── Empty JSON object (all-defaults) ─────────────────────────────────────────
 
-// In proto3 every field is optional with a zero default, so an empty payload
-// is a valid encoding of the all-zeros message.  The handler must be called
-// with all fields at their default values.
-TEST_F(NanopbRouterTest, Post_EmptyPayload_DecodesAsDefaultMessage) {
+// An empty JSON object {} deserializes to the all-defaults struct because
+// NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT fills missing keys from the
+// default-constructed value.
+TEST_F(JsonRouterTest, Post_EmptyJsonObject_DecodesAsDefaultMessage) {
   SetpointRequest received{.sensor_id = 0xFFu, .target = -1.0f};
 
   const std::array<Route, 1> routes{{
       {codes::kPost, "/setpoint",
-       NanopbRouter::Bind([&](const Request<SetpointRequest>& req) {
+       JsonRouter::Bind([&](const Request<SetpointRequest>& req) {
          received = req.Body();
          return Response{codes::kChanged, SetpointResponse{}};
        })},
   }};
-  NanopbRouter router{"", routes};
+  JsonRouter router{"", routes};
   server_.AddRouter(router);
 
-  // No payload bytes — nanopb decodes this as the zero-value message.
-  InjectRequest(MessageType::kNon, codes::kPost, 0x0005u, "/setpoint");
+  const std::string_view empty_obj = "{}";
+  InjectRequest(MessageType::kNon, codes::kPost, 0x0005u, "/setpoint",
+                span<const std::byte>{
+                    reinterpret_cast<const std::byte*>(empty_obj.data()),
+                    empty_obj.size()});
 
   ASSERT_EQ(transport_.sends_.size(), 1u);
   const auto wire = transport_.DeserializeFirstResponse();

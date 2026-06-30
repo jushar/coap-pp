@@ -20,3 +20,7 @@ add_subdirectory(coap_pp)
 if(COAP_PP_BUILD_SERDE_NANOPB)
     add_subdirectory(coap_pp_serde_nanopb)
 endif()
+
+if(COAP_PP_BUILD_SERDE_JSON)
+    add_subdirectory(coap_pp_serde_json)
+endif()
