@@ -10,10 +10,9 @@
 #include <cstdint>
 #include <thread>
 
-#include "coap_pp/util/span.hpp"
-
 #include "coap_pp/transport/endpoint.hpp"
 #include "coap_pp/transport/transport_if.hpp"
+#include "coap_pp/util/span.hpp"
 #include "coap_pp_transport_udp_ip_slip/serial_port_if.hpp"
 
 namespace coap_pp {
@@ -47,10 +46,10 @@ class UdpIpSlipTransport : public TransportIF {
   ~UdpIpSlipTransport() override;
 
   // Start the background receive thread.
-  [[nodiscard]] TransportError Start() override;
+  [[nodiscard]] TransportError Start();
 
   // Signal the receive thread to stop and join it.
-  void Stop() override;
+  void Stop();
 
   [[nodiscard]] TransportError Send(const Endpoint& destination,
                                     span<const std::byte> data) override;

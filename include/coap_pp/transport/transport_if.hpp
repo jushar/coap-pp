@@ -8,9 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "coap_pp/util/span.hpp"
-
 #include "coap_pp/transport/endpoint.hpp"
+#include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
 
@@ -47,17 +46,10 @@ class TransportIF {
   TransportIF(TransportIF&&) = delete;
   TransportIF& operator=(TransportIF&&) = delete;
 
-  // Bind to the local endpoint and begin delivering datagrams to the registered
-  // receiver. Must be called after SetReceiver().
-  [[nodiscard]] virtual TransportError Start() = 0;
-
-  // Stop receiving and release the underlying resource (e.g. socket).
-  virtual void Stop() = 0;
-
   // Transmit a datagram to `destination`. `data.size()` MUST NOT exceed
   // kMaxMessageSize. Returns TransportError::kError on failure.
-  [[nodiscard]] virtual TransportError Send(
-      const Endpoint& destination, span<const std::byte> data) = 0;
+  [[nodiscard]] virtual TransportError Send(const Endpoint& destination,
+                                            span<const std::byte> data) = 0;
 
   // Register the receiver that will be notified via OnReceive().
   // Must be called before Start(). Only one receiver is supported.

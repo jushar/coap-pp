@@ -9,10 +9,9 @@
 #include <cstdint>
 #include <thread>
 
-#include "coap_pp/util/span.hpp"
-
 #include "coap_pp/transport/endpoint.hpp"
 #include "coap_pp/transport/transport_if.hpp"
+#include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
 
@@ -29,10 +28,10 @@ class PosixUdpTransport : public TransportIF {
   ~PosixUdpTransport() override;
 
   // Bind the socket and start the background receive thread.
-  [[nodiscard]] TransportError Start() override;
+  [[nodiscard]] TransportError Start();
 
   // Signal the receive thread to stop, join it, and close the socket.
-  void Stop() override;
+  void Stop();
 
   [[nodiscard]] TransportError Send(const Endpoint& destination,
                                     span<const std::byte> data) override;

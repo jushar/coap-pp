@@ -22,9 +22,6 @@ inline constexpr std::size_t kMaxRecordedSends = 16;
 
 class FakeTransport : public TransportIF {
  public:
-  TransportError Start() override { return TransportError::kOk; }
-  void Stop() override {}
-
   TransportError Send(const Endpoint& dest,
                       span<const std::byte> data) override {
     if (!sends_.full()) {
