@@ -12,20 +12,6 @@ FetchContent_Declare(
 set(INSTALL_GTEST OFF)
 FetchContent_MakeAvailable(googletest)
 
-add_executable(coap-pp-tests
-    test_transport_interface.cpp
-    test_pdu.cpp
-    test_serialize.cpp
-    test_messenger.cpp
-    test_server.cpp
-)
-
-target_link_libraries(coap-pp-tests PRIVATE
-    coap-pp
-    GTest::gtest_main
-    coap-pp-warnings
-)
-
 include(GoogleTest)
-gtest_discover_tests(coap-pp-tests)
 
+add_subdirectory(coap_pp)
