@@ -4,6 +4,7 @@
  */
 #include <gtest/gtest.h>
 
+#include "coap_pp/option_number.hpp"
 #include "coap_pp/pdu/deserialize.hpp"
 #include "coap_pp/pdu/message.hpp"
 
@@ -155,7 +156,7 @@ TEST(PduDeserialize, ParsesStringOption) {
 
   auto it = msg.options.begin();
   ASSERT_NE(it, msg.options.end());
-  EXPECT_EQ(it->number, 11u);
+  EXPECT_EQ(it->number, OptionNumber::kUriPath);
   EXPECT_EQ(std::get<std::string_view>(it->value), "test");
   EXPECT_EQ(++it, msg.options.end());
 }
@@ -168,10 +169,10 @@ TEST(PduDeserialize, ParsesMultipleOptionsWithDeltaEncoding) {
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
   auto it = msg.options.begin();
-  EXPECT_EQ(it->number, 11u);
+  EXPECT_EQ(it->number, OptionNumber::kUriPath);
   EXPECT_EQ(std::get<std::string_view>(it->value), "a");
   ++it;
-  EXPECT_EQ(it->number, 15u);
+  EXPECT_EQ(it->number, OptionNumber::kUriQuery);
   EXPECT_EQ(std::get<std::string_view>(it->value), "b");
   ++it;
   EXPECT_EQ(it, msg.options.end());
@@ -188,7 +189,7 @@ TEST(PduDeserialize, ParsesUintOption) {
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
   auto it = msg.options.begin();
-  EXPECT_EQ(it->number, 12u);
+  EXPECT_EQ(it->number, OptionNumber::kContentFormat);
   EXPECT_EQ(std::get<uint32_t>(it->value), 50u);
 }
 
@@ -203,7 +204,7 @@ TEST(PduDeserialize, ParsesUintMultiByteValue) {
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
   auto it = msg.options.begin();
-  EXPECT_EQ(it->number, 14u);
+  EXPECT_EQ(it->number, OptionNumber::kMaxAge);
   EXPECT_EQ(std::get<uint32_t>(it->value), 3600u);
 }
 
@@ -227,7 +228,7 @@ TEST(PduDeserialize, ParsesEmptyOption) {
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
   auto it = msg.options.begin();
-  EXPECT_EQ(it->number, 5u);
+  EXPECT_EQ(it->number, OptionNumber::kIfNoneMatch);
   EXPECT_TRUE(std::holds_alternative<std::monostate>(it->value));
 }
 
@@ -242,7 +243,7 @@ TEST(PduDeserialize, ParsesOpaqueOption) {
   ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kOk);
 
   auto it = msg.options.begin();
-  EXPECT_EQ(it->number, 4u);
+  EXPECT_EQ(it->number, OptionNumber::kETag);
   const auto val = std::get<span<const std::byte>>(it->value);
   ASSERT_EQ(val.size(), 4u);
   EXPECT_EQ(val[0], std::byte{0xDE});
@@ -262,7 +263,7 @@ TEST(PduDeserialize, ParsesOptionExtendedDelta13) {
 
   auto it = msg.options.begin();
   ASSERT_NE(it, msg.options.end());
-  EXPECT_EQ(it->number, 13u);
+  EXPECT_EQ(it->number, OptionNumber{13u});
   EXPECT_TRUE(std::get<span<const std::byte>>(it->value).empty());
 }
 
@@ -277,7 +278,7 @@ TEST(PduDeserialize, OptionsAndPayloadTogether) {
 
   auto it = msg.options.begin();
   ASSERT_NE(it, msg.options.end());
-  EXPECT_EQ(it->number, 11u);
+  EXPECT_EQ(it->number, OptionNumber::kUriPath);
   EXPECT_EQ(std::get<std::string_view>(it->value), "r");
   EXPECT_EQ(++it, msg.options.end());
 
@@ -292,31 +293,6 @@ TEST(PduDeserialize, InvalidOptionNibble15ReturnsError) {
                      0xF5);  // [1111 | 0101]
   Message msg{};
   EXPECT_EQ(Deserialize(raw, msg), DeserializeError::kInvalidOption);
-}
-
-// ── GetOptionFormat
-// ───────────────────────────────────────────────────────────
-
-TEST(OptionFormat, KnownOptionsMapToCorrectFormat) {
-  EXPECT_EQ(GetOptionFormat(1), OptionFormat::kOpaque);   // If-Match
-  EXPECT_EQ(GetOptionFormat(3), OptionFormat::kString);   // Uri-Host
-  EXPECT_EQ(GetOptionFormat(4), OptionFormat::kOpaque);   // ETag
-  EXPECT_EQ(GetOptionFormat(5), OptionFormat::kEmpty);    // If-None-Match
-  EXPECT_EQ(GetOptionFormat(7), OptionFormat::kUint);     // Uri-Port
-  EXPECT_EQ(GetOptionFormat(8), OptionFormat::kString);   // Location-Path
-  EXPECT_EQ(GetOptionFormat(11), OptionFormat::kString);  // Uri-Path
-  EXPECT_EQ(GetOptionFormat(12), OptionFormat::kUint);    // Content-Format
-  EXPECT_EQ(GetOptionFormat(14), OptionFormat::kUint);    // Max-Age
-  EXPECT_EQ(GetOptionFormat(15), OptionFormat::kString);  // Uri-Query
-  EXPECT_EQ(GetOptionFormat(17), OptionFormat::kUint);    // Accept
-  EXPECT_EQ(GetOptionFormat(20), OptionFormat::kString);  // Location-Query
-  EXPECT_EQ(GetOptionFormat(35), OptionFormat::kString);  // Proxy-Uri
-  EXPECT_EQ(GetOptionFormat(39), OptionFormat::kString);  // Proxy-Scheme
-  EXPECT_EQ(GetOptionFormat(60), OptionFormat::kUint);    // Size1
-}
-
-TEST(OptionFormat, UnknownOptionFallsBackToOpaque) {
-  EXPECT_EQ(GetOptionFormat(9999), OptionFormat::kOpaque);
 }
 
 // ── Code helpers

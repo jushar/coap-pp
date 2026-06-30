@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include "coap_pp/content_formats.hpp"
+#include "coap_pp/option_number.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/pdu/deserialize.hpp"
 #include "coap_pp/pdu/serialize.hpp"
@@ -93,7 +94,7 @@ class ServerTest : public ::testing::Test {
     while (!remaining.empty()) {
       const auto slash = remaining.find('/');
       const auto seg = remaining.substr(0, slash);
-      b.AddOption(11u, seg);
+      b.AddOption(OptionNumber::kUriPath, seg);
       remaining =
           (slash == std::string_view::npos) ? "" : remaining.substr(slash + 1);
     }
@@ -306,7 +307,7 @@ TEST_F(ServerTest, Response_ContentFormat_AddedWhenSet) {
 
   bool found_cf = false;
   for (const auto& opt : resp.options) {
-    if (opt.number == 12u) {
+    if (opt.number == OptionNumber::kContentFormat) {
       found_cf = true;
       EXPECT_EQ(std::get<uint32_t>(opt.value), 50u);
     }
@@ -329,7 +330,7 @@ TEST_F(ServerTest, Response_NoContentFormat_WhenNotSet) {
   const auto resp = transport_.DeserializeFirstResponse();
 
   for (const auto& opt : resp.options) {
-    EXPECT_NE(opt.number, 12u) << "Content-Format should not be present";
+    EXPECT_NE(opt.number, OptionNumber::kContentFormat) << "Content-Format should not be present";
   }
 }
 
@@ -570,7 +571,7 @@ TEST_F(ServerTest, Async_CON_DelayedResponse_CarriesToken) {
       .SetCode(codes::kGet)
       .SetMessageId(0x0042u)
       .SetToken(req_token);
-  b.AddOption(11u, std::string_view{"slow"});
+  b.AddOption(OptionNumber::kUriPath, std::string_view{"slow"});
 
   std::array<std::byte, 256> buf{};
   std::size_t written = 0u;

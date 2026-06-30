@@ -9,14 +9,12 @@
 #include <cstdint>
 #include <iterator>
 #include <string_view>
-
-#include "coap_pp/util/span.hpp"
 #include <variant>
 
-namespace coap_pp {
+#include "coap_pp/option_number.hpp"
+#include "coap_pp/util/span.hpp"
 
-// Wire format categories per RFC 7252 §3.2.
-enum class OptionFormat : uint8_t { kEmpty, kUint, kString, kOpaque };
+namespace coap_pp {
 
 // Typed value of a decoded CoAP option.
 //   monostate           — empty   (e.g. If-None-Match)
@@ -28,50 +26,10 @@ enum class OptionFormat : uint8_t { kEmpty, kUint, kString, kOpaque };
 using OptionValue = std::variant<std::monostate, uint32_t, std::string_view,
                                  span<const std::byte> >;
 
-struct OptionView {
-  uint16_t number{0};
+struct OptionView final {
+  OptionNumber number{};
   OptionValue value{};
 };
-
-// Returns the wire format for a known RFC 7252 option number (§5.10).
-// Unknown numbers fall back to kOpaque — safe for both critical and elective
-// options.
-inline OptionFormat GetOptionFormat(uint16_t number) {
-  switch (number) {
-    case 1:
-      return OptionFormat::kOpaque;  // If-Match
-    case 3:
-      return OptionFormat::kString;  // Uri-Host
-    case 4:
-      return OptionFormat::kOpaque;  // ETag
-    case 5:
-      return OptionFormat::kEmpty;  // If-None-Match
-    case 7:
-      return OptionFormat::kUint;  // Uri-Port
-    case 8:
-      return OptionFormat::kString;  // Location-Path
-    case 11:
-      return OptionFormat::kString;  // Uri-Path
-    case 12:
-      return OptionFormat::kUint;  // Content-Format
-    case 14:
-      return OptionFormat::kUint;  // Max-Age
-    case 15:
-      return OptionFormat::kString;  // Uri-Query
-    case 17:
-      return OptionFormat::kUint;  // Accept
-    case 20:
-      return OptionFormat::kString;  // Location-Query
-    case 35:
-      return OptionFormat::kString;  // Proxy-Uri
-    case 39:
-      return OptionFormat::kString;  // Proxy-Scheme
-    case 60:
-      return OptionFormat::kUint;  // Size1
-    default:
-      return OptionFormat::kOpaque;
-  }
-}
 
 // Decode a CoAP variable-length unsigned integer (RFC 7252 §3.2).
 // Big-endian, leading zeros omitted; empty span represents zero.
@@ -122,7 +80,7 @@ class OptionsIterator {
   pointer operator->() const { return &current_; }
 
   OptionsIterator& operator++() {
-    accumulated_number_ = current_.number;
+    accumulated_number_ = current_.number.Value();
     cursor_ = next_cursor_;
     if (cursor_ != end_) DeserializeCurrent();
     return *this;
@@ -158,12 +116,13 @@ inline void OptionsIterator::DeserializeCurrent() {
   const uint16_t delta = DecodeOptionField((header >> 4u) & 0x0Fu, p);
   const uint16_t length = DecodeOptionField(header & 0x0Fu, p);
 
-  current_.number = static_cast<uint16_t>(accumulated_number_ + delta);
+  const auto number_value = static_cast<uint16_t>(accumulated_number_ + delta);
+  current_.number = OptionNumber{number_value};
   next_cursor_ = p + length;
 
   const span<const std::byte> raw{p, length};
 
-  switch (GetOptionFormat(current_.number)) {
+  switch (FormatFor(current_.number)) {
     case OptionFormat::kEmpty:
       current_.value = std::monostate{};
       break;

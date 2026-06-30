@@ -10,6 +10,7 @@
 
 #include "coap_pp/content_formats.hpp"
 #include "coap_pp/log.hpp"
+#include "coap_pp/option_number.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/server/resource.hpp"
 
@@ -22,7 +23,7 @@ std::size_t JoinUriPath(const OptionsView& opts, char* buf,
                         std::size_t buf_size) {
   std::size_t len = 0;
   for (const auto& opt : opts) {
-    if (opt.number != 11u) continue;  // only Uri-Path
+    if (opt.number != OptionNumber::kUriPath) continue;
     const auto* sv = std::get_if<std::string_view>(&opt.value);
     if (!sv) continue;
 
@@ -150,7 +151,7 @@ void CoapServer::SendResponse(const Endpoint& to, MessageType req_type,
       .SetMessageId(was_con && as_piggybacked_ack ? req_mid : next_mid_++)
       .SetToken(token);
   if (resp.content_format != ContentFormat::kNoContentFormat) {
-    builder.AddOption(12u, static_cast<uint32_t>(resp.content_format.Value()));
+    builder.AddOption(OptionNumber::kContentFormat, static_cast<uint32_t>(resp.content_format.Value()));
   }
   if (resp.serialize_payload) {
     builder.SetSerializePayloadCallback(resp.serialize_payload);

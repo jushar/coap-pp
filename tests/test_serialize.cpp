@@ -4,6 +4,7 @@
  */
 #include <gtest/gtest.h>
 
+#include "coap_pp/option_number.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/pdu/deserialize.hpp"
 #include "coap_pp/pdu/serialize.hpp"
@@ -121,7 +122,7 @@ TEST(Serialize, Token) {
 
 TEST(Serialize, StringOption_UriPath) {
   // Uri-Path (11) "test" → header 0xB4 + "test"
-  OptionView opt{11u, std::string_view{"test"}};
+  OptionView opt{OptionNumber::kUriPath, std::string_view{"test"}};
   OutgoingMessage msg;
   msg.type = MessageType::kCon;
   msg.code = codes::kGet;
@@ -138,7 +139,7 @@ TEST(Serialize, StringOption_UriPath) {
 
 TEST(Serialize, UintOption_ContentFormat_Canonical) {
   // Content-Format (12) value=50 → canonical 1 byte → header 0xC1 0x32
-  OptionView opt{12u, uint32_t{50u}};
+  OptionView opt{OptionNumber::kContentFormat, uint32_t{50u}};
   OutgoingMessage msg;
   msg.type = MessageType::kAck;
   msg.code = codes::kContent;
@@ -154,7 +155,7 @@ TEST(Serialize, UintOption_ContentFormat_Canonical) {
 
 TEST(Serialize, UintOption_ZeroValue) {
   // Content-Format (12) value=0 → zero-length uint → header 0xC0
-  OptionView opt{12u, uint32_t{0u}};
+  OptionView opt{OptionNumber::kContentFormat, uint32_t{0u}};
   OutgoingMessage msg;
   msg.type = MessageType::kAck;
   msg.code = codes::kContent;
@@ -169,7 +170,7 @@ TEST(Serialize, UintOption_ZeroValue) {
 
 TEST(Serialize, UintOption_MultiByteValue) {
   // Max-Age (14) = 3600 = 0x0E10 → 2 bytes, delta=14 → ext-13 (ext_byte=1)
-  OptionView opt{14u, uint32_t{3600u}};
+  OptionView opt{OptionNumber::kMaxAge, uint32_t{3600u}};
   OutgoingMessage msg;
   msg.type = MessageType::kAck;
   msg.code = codes::kContent;
@@ -188,7 +189,7 @@ TEST(Serialize, UintOption_MultiByteValue) {
 
 TEST(Serialize, EmptyOption_IfNoneMatch) {
   // If-None-Match (5) → header 0x50 (delta=5, length=0)
-  OptionView opt{5u, std::monostate{}};
+  OptionView opt{OptionNumber::kIfNoneMatch, std::monostate{}};
   OutgoingMessage msg;
   msg.type = MessageType::kCon;
   msg.code = codes::kGet;
@@ -204,7 +205,7 @@ TEST(Serialize, EmptyOption_IfNoneMatch) {
 TEST(Serialize, OpaqueOption_ETag) {
   // ETag (4): delta=4, length=4 → header 0x44
   const auto raw_etag = MakeRaw(0xDE, 0xAD, 0xBE, 0xEF);
-  OptionView opt{4u, span<const std::byte>{raw_etag}};
+  OptionView opt{OptionNumber::kETag, span<const std::byte>{raw_etag}};
   OutgoingMessage msg;
   msg.type = MessageType::kCon;
   msg.code = codes::kGet;
@@ -240,7 +241,7 @@ TEST(Serialize, Payload) {
 
 TEST(Serialize, OptionsAndPayload) {
   // Uri-Path "r" + payload {0xDE, 0xAD}
-  OptionView opt{11u, std::string_view{"r"}};
+  OptionView opt{OptionNumber::kUriPath, std::string_view{"r"}};
   const auto body = MakeRaw(0xDE, 0xAD);
   OutgoingMessage msg;
   msg.type = MessageType::kCon;
@@ -283,7 +284,7 @@ TEST(Serialize, RoundTrip_WithOptionsAndPayload) {
   tok.bytes[0] = std::byte{0x11};
   tok.bytes[1] = std::byte{0x22};
 
-  OptionView opt{11u, std::string_view{"sensors"}};
+  OptionView opt{OptionNumber::kUriPath, std::string_view{"sensors"}};
   const auto body = MakeRaw('O', 'K');
 
   OutgoingMessage out_msg;
@@ -310,7 +311,7 @@ TEST(Serialize, RoundTrip_WithOptionsAndPayload) {
 
   auto it = in_msg.options.begin();
   ASSERT_NE(it, in_msg.options.end());
-  EXPECT_EQ(it->number, 11u);
+  EXPECT_EQ(it->number, OptionNumber::kUriPath);
   EXPECT_EQ(std::get<std::string_view>(it->value), "sensors");
 
   ASSERT_EQ(in_msg.payload.size(), 2u);
@@ -338,14 +339,14 @@ TEST(MessageBuilder, SortsOptions) {
   b.SetType(MessageType::kCon)
       .SetCode(codes::kGet)
       .SetMessageId(0x0001u)
-      .AddOption(15u, std::string_view{"q=1"})  // added first but higher number
-      .AddOption(11u,
+      .AddOption(OptionNumber::kUriQuery, std::string_view{"q=1"})  // added first but higher number
+      .AddOption(OptionNumber::kUriPath,
                  std::string_view{"path"});  // added second but lower number
 
   const auto msg = b.Build();
   ASSERT_EQ(msg.options.size(), 2u);
-  EXPECT_EQ(msg.options[0].number, 11u);
-  EXPECT_EQ(msg.options[1].number, 15u);
+  EXPECT_EQ(msg.options[0].number, OptionNumber::kUriPath);
+  EXPECT_EQ(msg.options[1].number, OptionNumber::kUriQuery);
 }
 
 TEST(MessageBuilder, AllOptionTypes) {
@@ -355,31 +356,31 @@ TEST(MessageBuilder, AllOptionTypes) {
   b.SetType(MessageType::kCon)
       .SetCode(codes::kPost)
       .SetMessageId(0x0002u)
-      .AddOption(5u, std::monostate{})
-      .AddOption(7u, uint32_t{5683u})
-      .AddOption(11u, std::string_view{"test"})
-      .AddOption(4u, span<const std::byte>{opaque_bytes});
+      .AddOption(OptionNumber::kIfNoneMatch, std::monostate{})
+      .AddOption(OptionNumber::kUriPort, uint32_t{5683u})
+      .AddOption(OptionNumber::kUriPath, std::string_view{"test"})
+      .AddOption(OptionNumber::kETag, span<const std::byte>{opaque_bytes});
 
   const auto msg = b.Build();
   ASSERT_EQ(msg.options.size(), 4u);
 
-  // After sort: 4, 5, 7, 11
-  EXPECT_EQ(msg.options[0].number, 4u);
+  // After sort: ETag(4), IfNoneMatch(5), UriPort(7), UriPath(11)
+  EXPECT_EQ(msg.options[0].number, OptionNumber::kETag);
   EXPECT_TRUE(
       std::holds_alternative<span<const std::byte>>(msg.options[0].value));
-  EXPECT_EQ(msg.options[1].number, 5u);
+  EXPECT_EQ(msg.options[1].number, OptionNumber::kIfNoneMatch);
   EXPECT_TRUE(std::holds_alternative<std::monostate>(msg.options[1].value));
-  EXPECT_EQ(msg.options[2].number, 7u);
+  EXPECT_EQ(msg.options[2].number, OptionNumber::kUriPort);
   EXPECT_EQ(std::get<uint32_t>(msg.options[2].value), 5683u);
-  EXPECT_EQ(msg.options[3].number, 11u);
+  EXPECT_EQ(msg.options[3].number, OptionNumber::kUriPath);
   EXPECT_EQ(std::get<std::string_view>(msg.options[3].value), "test");
 }
 
 TEST(MessageBuilder, SaturatesAtMaxOptions) {
   MessageBuilder<2> b;
-  b.AddOption(11u, std::string_view{"a"})
-      .AddOption(11u, std::string_view{"b"})
-      .AddOption(11u, std::string_view{"c"});  // silently ignored
+  b.AddOption(OptionNumber::kUriPath, std::string_view{"a"})
+      .AddOption(OptionNumber::kUriPath, std::string_view{"b"})
+      .AddOption(OptionNumber::kUriPath, std::string_view{"c"});  // silently ignored
 
   const auto msg = b.Build();
   EXPECT_EQ(msg.options.size(), 2u);
@@ -397,7 +398,7 @@ TEST(MessageBuilder, RoundTripViaBuilder) {
       .SetCode(codes::kGet)
       .SetMessageId(0x0005u)
       .SetToken(tok)
-      .AddOption(11u, std::string_view{"res"})
+      .AddOption(OptionNumber::kUriPath, std::string_view{"res"})
       .SetSerializePayloadCallback(RawBytesSerializeCallback(payload));
 
   const auto out_msg = b.Build();

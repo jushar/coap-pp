@@ -41,16 +41,16 @@ class MessageBuilder {
     return *this;
   }
 
-  MessageBuilder& AddOption(uint16_t number, std::monostate) {
+  MessageBuilder& AddOption(OptionNumber number, std::monostate) {
     return Push(OptionView{number, std::monostate{}});
   }
-  MessageBuilder& AddOption(uint16_t number, uint32_t value) {
+  MessageBuilder& AddOption(OptionNumber number, uint32_t value) {
     return Push(OptionView{number, value});
   }
-  MessageBuilder& AddOption(uint16_t number, std::string_view value) {
+  MessageBuilder& AddOption(OptionNumber number, std::string_view value) {
     return Push(OptionView{number, value});
   }
-  MessageBuilder& AddOption(uint16_t number, span<const std::byte> value) {
+  MessageBuilder& AddOption(OptionNumber number, span<const std::byte> value) {
     return Push(OptionView{number, value});
   }
 

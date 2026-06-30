@@ -49,7 +49,7 @@ SerializeError Serialize(const OutgoingMessage& msg, span<std::byte> out,
   // Options
   uint16_t prev_number = 0u;
   for (const auto& opt : msg.options) {
-    const uint16_t delta = static_cast<uint16_t>(opt.number - prev_number);
+    const uint16_t delta = static_cast<uint16_t>(opt.number.Value() - prev_number);
 
     // Compute value length
     const std::size_t value_len = std::visit(
@@ -117,7 +117,7 @@ SerializeError Serialize(const OutgoingMessage& msg, span<std::byte> out,
         opt.value);
     if (!write_ok) return SerializeError::kBufferTooSmall;
 
-    prev_number = opt.number;
+    prev_number = opt.number.Value();
   }
 
   // Payload marker + payload
