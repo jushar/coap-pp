@@ -26,6 +26,7 @@ A C++17 implementation of the CoAP protocol ([RFC 7252](https://www.rfc-editor.o
 | `coap-pp-transport-posix` | POSIX IPv4 UDP transport (Linux / macOS) |
 | `coap-pp-transport-udp-ip-slip` | UDP/IP/SLIP transport over a serial port (platform-agnostic) |
 | `coap-pp-serde-nanopb` | NanoPB Serialization Layer |
+| `coap-pp-serde-json` | nlohmann/json Serialization Layer |
 
 ## Requirements
 
@@ -107,7 +108,7 @@ int main() {
 }
 ```
 
-See [examples/hello_world.cpp](examples/hello_world.cpp) for a complete example including async (deferred) responses.
+See [examples/serde_nanopb/serde_nanopb.cpp](examples/serde_nanopb/serde_nanopb.cpp) for a complete example including async (deferred) responses.
 
 ## Transports
 
@@ -200,7 +201,64 @@ NanopbRouter::Bind([](const Request<MyRequest>& request) {
 })
 ```
 
-See [examples/hello_world.cpp](examples/hello_world.cpp) for a complete working example (`HandleWithPayload` / `/hello-world-pb` and the `/hello-lambda-pb` lambda route).
+See [examples/serde_nanopb/serde_nanopb.cpp](examples/serde_nanopb/serde_nanopb.cpp) for a complete working example.
+
+## nlohmann/json serialization (`coap-pp-serde-json`)
+
+The `coap-pp-serde-json` layer automatically deserializes JSON request payloads and serializes JSON response payloads using [nlohmann/json](https://github.com/nlohmann/json).
+
+**1. Define your request/response types and wire up nlohmann/json:**
+
+```cpp
+#include <nlohmann/json.hpp>
+
+struct GreetRequest {
+    std::string name{};
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(GreetRequest, name)
+
+struct GreetResponse {
+    std::string greeting{};
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(GreetResponse, greeting)
+```
+
+Any type that nlohmann/json can convert via `from_json`/`to_json` ADL works here.
+
+**2. Write a typed handler — the payload is decoded before your handler runs:**
+
+```cpp
+auto HandleGreet(const Request<GreetRequest>& request) {
+    GreetResponse response{.greeting = "Hello, " + request.Body().name + "!"};
+    return Response{codes::kContent, response};
+}
+```
+
+If JSON parsing fails, the server automatically responds with `4.00 Bad Request`.
+
+**3. Register routes with `JsonRouter`:**
+
+```cpp
+#include "coap_pp_serde_json/router.hpp"
+
+static std::array<Route, 1> routes{{
+    {codes::kPost, "/greet",
+     JsonRouter::Bind<&MyController::HandleGreet>(this)},
+}};
+static JsonRouter router{"", routes};
+server.AddRouter(router);
+```
+
+Lambdas are also supported:
+
+```cpp
+JsonRouter::Bind([](const Request<GreetRequest>& request) {
+    return Response{codes::kContent,
+                    GreetResponse{.greeting = "hello from lambda"}};
+})
+```
+
+See [examples/serde_json/serde_json.cpp](examples/serde_json/serde_json.cpp) for a complete working example.
 
 ## Async responses
 

@@ -1,23 +1,23 @@
 """
-Example CoAP client for the hello_world server.
+Example CoAP client for the serde_nanopb server.
 
 Requires:
     pip install aiocoap protobuf
 
-hello_world_pb2.py was generated with:
-    protoc --python_out=examples examples/hello_world.proto
+serde_nanopb_pb2.py was generated with:
+    protoc --python_out=examples/serde_nanopb examples/serde_nanopb/serde_nanopb.proto
 
 Start the server first:
-    ./build/examples/coap-hello-world
+    ./build/examples/coap-serde-nanopb
 
 Then run:
-    python examples/hello_world_client.py
+    python examples/serde_nanopb/serde_nanopb_client.py
 """
 
 import asyncio
 import aiocoap
 
-import hello_world_pb2
+import serde_nanopb_pb2
 
 BASE_URI = "coap://127.0.0.1:5683"
 
@@ -50,13 +50,13 @@ async def post_pb(ctx, path, request_msg, response_type=None):
 async def main():
     ctx = await aiocoap.Context.create_client_context()
 
-    hello_req = hello_world_pb2.HelloRequest(name="World")
+    hello_req = serde_nanopb_pb2.HelloRequest(name="World")
 
     await get(ctx, "/hello")                                                  # 2.05 Content: "Hello, CoAP World!"
     await get(ctx, "/slow")                                                   # 2.05 Content after ~2 s delay
     await get(ctx, "/other")                                                  # 4.04 Not Found
-    await post_pb(ctx, "/hello-world-pb", hello_req, hello_world_pb2.HelloResponse)  # 2.05 HelloResponse
-    await post_pb(ctx, "/hello-lambda-pb", hello_req, hello_world_pb2.HelloResponse) # 2.05 HelloResponse
+    await post_pb(ctx, "/hello-world-pb", hello_req, serde_nanopb_pb2.HelloResponse)  # 2.05 HelloResponse
+    await post_pb(ctx, "/hello-lambda-pb", hello_req, serde_nanopb_pb2.HelloResponse) # 2.05 HelloResponse
 
     await ctx.shutdown()
 

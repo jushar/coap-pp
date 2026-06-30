@@ -1,0 +1,9 @@
+# Copyright (c) 2026 jushar
+# SPDX-License-Identifier: MIT
+
+coap_pp_nanopb_generate_cpp(PROTO_SRCS PROTO_HDRS PROTO_FIELDS serde_nanopb.proto)
+
+add_executable(coap-serde-nanopb serde_nanopb.cpp ${PROTO_SRCS} ${PROTO_FIELDS})
+
+target_include_directories(coap-serde-nanopb PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(coap-serde-nanopb PRIVATE coap-pp-transport-posix coap-pp-serde-nanopb)
