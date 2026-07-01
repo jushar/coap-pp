@@ -30,7 +30,7 @@ inline auto RawBytesSerializeCallback(span<const std::byte> raw_bytes) {
 template <typename Serializer, typename T>
 inline auto SerializerSerializeCallback(const T& payload) {
   return [&payload](span<std::byte> out, std::size_t& n) mutable {
-    return Serializer::template Serialize(payload, out, n);
+    return Serializer::template Serialize<T>(payload, out, n);
   };
 }
 
