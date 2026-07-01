@@ -50,19 +50,19 @@ target_include_directories(coap-pp
 )
 
 # nanopb serde
-option(COAP_PP_BUILD_SERDE_NANOPB "Build nanopb-based serde support" ON)
+option(COAP_PP_BUILD_SERDE_NANOPB "Build nanopb-based serde support" OFF)
 if(COAP_PP_BUILD_SERDE_NANOPB)
     add_subdirectory(src/coap_pp_serde_nanopb)
 endif()
 
 # nlohmann/json serde
-option(COAP_PP_BUILD_SERDE_JSON "Build nlohmann/json-based serde support" ON)
+option(COAP_PP_BUILD_SERDE_JSON "Build nlohmann/json-based serde support" OFF)
 if(COAP_PP_BUILD_SERDE_JSON)
     add_subdirectory(src/coap_pp_serde_json)
 endif()
 
 # POSIX transport + examples (Linux / macOS only)
-option(COAP_PP_BUILD_POSIX_TRANSPORT "Build the POSIX UDP transport" ON)
+option(COAP_PP_BUILD_POSIX_TRANSPORT "Build the POSIX UDP transport" OFF)
 if(COAP_PP_BUILD_POSIX_TRANSPORT)
     add_subdirectory(src/coap_pp_transport_posix)
 endif()

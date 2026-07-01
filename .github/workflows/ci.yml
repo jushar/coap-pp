@@ -44,6 +44,9 @@ jobs:
             -DCOAP_PP_BUILD_TESTS=ON \
             -DCOAP_PP_BUILD_EXAMPLES=ON \
             -DCOAP_PP_BUILD_TRANSPORT_UDP_IP_SLIP=ON \
+            -DCOAP_PP_BUILD_POSIX_TRANSPORT=ON \
+            -DCOAP_PP_BUILD_SERDE_NANOPB=ON \
+            -DCOAP_PP_BUILD_SERDE_JSON=ON \
             ${{ matrix.opts.no_std_span && '-DCOAP_PP_NO_STD_SPAN=1' || '' }} \
             ${{ matrix.opts.inplace_function && '-DCOAP_PP_USE_INPLACE_FUNCTION=ON' || '' }}
 

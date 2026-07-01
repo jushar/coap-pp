@@ -44,10 +44,15 @@ CMake options:
 
 | Option | Default | Description |
 |---|---|---|
-| `COAP_PP_BUILD_POSIX_TRANSPORT` | `ON` (UNIX only) | Build the POSIX UDP transport |
-| `COAP_PP_BUILD_EXAMPLES` | `ON` (UNIX only) | Build example programs |
+| `COAP_PP_BUILD_POSIX_TRANSPORT` | `OFF` | Build the POSIX UDP transport (UNIX only) |
+| `COAP_PP_BUILD_TRANSPORT_UDP_IP_SLIP` | `OFF` | Build the UDP/IP/SLIP serial transport |
+| `COAP_PP_BUILD_SERDE_NANOPB` | `OFF` | Build the NanoPB serialization layer |
+| `COAP_PP_BUILD_SERDE_JSON` | `OFF` | Build the nlohmann/json serialization layer |
+| `COAP_PP_BUILD_EXAMPLES` | `ON` | Build example programs (requires `COAP_PP_BUILD_POSIX_TRANSPORT`) |
 | `COAP_PP_BUILD_TESTS` | `ON` | Build GoogleTest suite |
 | `COAP_PP_LOG_LEVEL` | `0` | Minimum compiled-in log level (0=Debug, 1=Info, 2=Warning, 3=Error) |
+| `COAP_PP_USE_INPLACE_FUNCTION` | `OFF` | Use a fixed-buffer `inplace_function` instead of `std::function` for `RequestHandler` (no heap allocation) |
+| `COAP_PP_INPLACE_FUNCTION_CAPACITY` | `32` | Buffer capacity in bytes for the `inplace_function` storage (only when `COAP_PP_USE_INPLACE_FUNCTION=ON`) |
 
 ### Running tests
 
@@ -290,4 +295,4 @@ FetchContent_MakeAvailable(coap-pp)
 target_link_libraries(my-target PRIVATE coap-pp)
 ```
 
-When `COAP_PP_BUILD_SERDE_NANOPB` is `ON` (the default), `FetchContent_MakeAvailable` also defines the `coap_pp_nanopb_generate_cpp` CMake function. See the [NanoPB deserialization](#nanopb-deserialization-coap-pp-serde-nanopb) section above for usage.
+When `COAP_PP_BUILD_SERDE_NANOPB` is `ON`, `FetchContent_MakeAvailable` also defines the `coap_pp_nanopb_generate_cpp` CMake function. See the [NanoPB deserialization](#nanopb-deserialization-coap-pp-serde-nanopb) section above for usage.
