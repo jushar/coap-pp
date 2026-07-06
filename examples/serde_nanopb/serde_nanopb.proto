@@ -1,9 +1,12 @@
 syntax = "proto3";
+import "nanopb.proto";
+
+package demo;
 
 message HelloRequest {
-    string name = 1;
+    string name = 1 [(nanopb).max_size = 32];
 }
 
 message HelloResponse {
-    string greeting = 1;
+    string greeting = 1 [(nanopb).max_size = 64];
 }

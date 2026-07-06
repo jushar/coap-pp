@@ -46,11 +46,11 @@ class ExampleController final {
     return async;
   }
 
-  auto HandleWithPayload(const Request<HelloRequest>& request) const {
+  auto HandleWithPayload(const Request<demo_HelloRequest>& request) const {
     std::cout << "Got payload: { name = " << request.Body().name << " }"
               << std::endl;
 
-    HelloResponse response{.greeting = "Hello from protobuf!"};
+    demo_HelloResponse response{.greeting = "Hello from protobuf!"};
 
     return Response{codes::kContent, response};
   }
@@ -65,11 +65,11 @@ class ExampleController final {
         {codes::kPost, "/hello-world-pb",
          NanopbRouter::Bind<&ExampleController::HandleWithPayload>(this)},
         {codes::kPost, "/hello-lambda-pb",
-         NanopbRouter::Bind([](const Request<HelloRequest>& request) {
+         NanopbRouter::Bind([](const Request<demo_HelloRequest>& request) {
            std::cout << "Got payload (lambda): { name = " << request.Body().name
                      << " }" << std::endl;
            return Response{codes::kContent,
-                           HelloResponse{.greeting = "hello from lambda"}};
+                           demo_HelloResponse{.greeting = "hello from lambda"}};
          })},
     }};
     static NanopbRouter router{"", routes};

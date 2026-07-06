@@ -2,5 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 add_subdirectory(raw)
-add_subdirectory(serde_nanopb)
-add_subdirectory(serde_json)
+
+if(COAP_PP_BUILD_SERDE_NANOPB)
+    add_subdirectory(serde_nanopb)
+endif()
+
+if(COAP_PP_BUILD_SERDE_JSON)
+    add_subdirectory(serde_json)
+endif()
