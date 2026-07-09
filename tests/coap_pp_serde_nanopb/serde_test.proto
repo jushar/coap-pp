@@ -18,3 +18,7 @@ message SetpointResponse {
     bool   accepted = 1;
     string message  = 2;
 }
+
+// No fields — exercises the zero-length encoding path (kMaxEncodedSize == 0).
+message Empty {
+}

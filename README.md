@@ -57,7 +57,7 @@ CMake options:
 ### Running tests
 
 ```sh
-cd build && ctest --output-on-failure --parallel
+cd build/tests && ctest --output-on-failure --parallel
 ```
 
 ## Quick start

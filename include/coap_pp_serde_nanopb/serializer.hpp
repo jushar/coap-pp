@@ -26,18 +26,23 @@ struct NanopbSerializer final {
   template <typename T>
   static SerializeError Serialize(const T& val, span<std::byte> buf,
                                   std::size_t& written) {
-    if (buf.size() < NanopbFields<T>::kMaxEncodedSize) {
-      return SerializeError::kBufferTooSmall;
-    }
+    if constexpr (NanopbFields<T>::kMaxEncodedSize == 0) {
+      written = 0U;
+      return SerializeError::kOk;
+    } else {
+      if (buf.size() < NanopbFields<T>::kMaxEncodedSize) {
+        return SerializeError::kBufferTooSmall;
+      }
 
-    pb_ostream_t stream = pb_ostream_from_buffer(
-        reinterpret_cast<pb_byte_t*>(buf.data()), buf.size());
-    if (!pb_encode(&stream, NanopbFields<T>::kFields, &val)) {
-      return SerializeError::kBufferTooSmall;
-    }
+      pb_ostream_t stream = pb_ostream_from_buffer(
+          reinterpret_cast<pb_byte_t*>(buf.data()), buf.size());
+      if (!pb_encode(&stream, NanopbFields<T>::kFields, &val)) {
+        return SerializeError::kBufferTooSmall;
+      }
 
-    written = stream.bytes_written;
-    return SerializeError::kOk;
+      written = stream.bytes_written;
+      return SerializeError::kOk;
+    }
   }
 };
 

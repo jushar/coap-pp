@@ -244,5 +244,51 @@ TEST_F(NanopbRouterTest, Post_EmptyPayload_DecodesAsDefaultMessage) {
   EXPECT_FLOAT_EQ(received.target, 0.0f);
 }
 
+// ── Empty protobuf messages (zero fields) ────────────────────────────────────
+
+// A message with no fields has NanopbFields<T>::kMaxEncodedSize == 0. The
+// serializer must special-case this to produce a zero-length payload instead
+// of rejecting the (zero-size) buffer as too small.
+TEST_F(NanopbRouterTest, Get_EmptyResponse_SerializesToZeroLengthPayload) {
+  const std::array<Route, 1> routes{{
+      {codes::kGet, "/ping", NanopbRouter::Bind([](const RawRequest&) {
+         return Response{codes::kContent, Empty{}};
+       })},
+  }};
+  NanopbRouter router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0006u, "/ping");
+
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const auto wire = transport_.DeserializeFirstResponse();
+  EXPECT_EQ(wire.code, codes::kContent);
+  EXPECT_TRUE(wire.payload.empty());
+}
+
+// A POST handler that both takes and returns an empty message: the request's
+// zero-length payload must decode successfully, and the response must
+// round-trip back out as a zero-length payload.
+TEST_F(NanopbRouterTest, Post_EmptyRequestAndResponse_RoundTrips) {
+  bool handler_called = false;
+
+  const std::array<Route, 1> routes{{
+      {codes::kPost, "/ping", NanopbRouter::Bind([&](const Request<Empty>&) {
+         handler_called = true;
+         return Response{codes::kChanged, Empty{}};
+       })},
+  }};
+  NanopbRouter router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kPost, 0x0007u, "/ping");
+
+  EXPECT_TRUE(handler_called);
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const auto wire = transport_.DeserializeFirstResponse();
+  EXPECT_EQ(wire.code, codes::kChanged);
+  EXPECT_TRUE(wire.payload.empty());
+}
+
 }  // namespace
 }  // namespace coap_pp
