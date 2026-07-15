@@ -84,7 +84,7 @@ class Messenger : private TransportReceiverIF {
   void SetHandler(MessageHandlerIF& handler);
 
   // Serialize msg and send via transport.
-  // For CON messages a slot is claimed from the pending FIFO for retransmission
+  // For CON messages a slot is claimed from the pending pool for retransmission
   // tracking. Returns MessengerError::kNoPendingSlot if the pool is full.
   [[nodiscard]] MessengerError Send(const Endpoint& destination,
                                     const OutgoingMessage& msg);

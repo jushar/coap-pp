@@ -8,6 +8,7 @@ add_executable(coap-pp-tests
     server/test_server.cpp
     transport/test_endpoint.cpp
     util/test_inplace_function.cpp
+    util/test_memory_pool.cpp
     util/test_panic.cpp
 )
 

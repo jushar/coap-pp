@@ -50,13 +50,12 @@ MessengerError Messenger::Send(const Endpoint& destination,
       return MessengerError::kNoPendingSlot;
     }
 
-    // Claim the next slot without reinitialising — all fields are overwritten
-    // below.
-    auto& slot = pending_.emplace_back();
+    // Claim a slot without reinitialising — all fields are overwritten below.
+    auto& slot = pending_.Allocate();
 
     std::size_t written = 0u;
     if (Serialize(msg, slot.buffer, written) != SerializeError::kOk) {
-      pending_.pop_back();
+      pending_.Release(slot);
       detail::Log<LogLevel::kError>("CON serialize failed for MID %u",
                                     msg.message_id);
       return MessengerError::kSerializeFailed;
@@ -95,7 +94,7 @@ MessengerError Messenger::Send(const Endpoint& destination,
 }
 
 void Messenger::Tick(uint32_t elapsed_ms) {
-  pending_.remove_if([&](PendingSlot& slot) -> bool {
+  pending_.RemoveIf([&](PendingSlot& slot) -> bool {
     switch (slot.retry.Advance(elapsed_ms)) {
       case RetransmitState::Action::kWaiting:
         return false;
@@ -134,7 +133,7 @@ void Messenger::OnReceive(const Endpoint& sender,
 }
 
 void Messenger::AckPending(const Endpoint& sender, uint16_t message_id) {
-  pending_.remove_if([&](const PendingSlot& s) {
+  pending_.RemoveIf([&](const PendingSlot& s) {
     return s.message_id == message_id && s.destination == sender;
   });
 }
