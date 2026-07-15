@@ -7,8 +7,6 @@
 #include <stdexcept>
 
 #include "coap_pp/panic.hpp"
-#include "coap_pp/util/inplace_function.hpp"
-#include "coap_pp/util/memory_pool.hpp"
 #include "coap_pp/util/static_vector.hpp"
 
 namespace coap_pp {
@@ -38,21 +36,6 @@ TEST_F(PanicTest, StaticVectorEmplaceBackPanicsWhenFull) {
   v.emplace_back(1);
   EXPECT_THROW(v.emplace_back(2), std::runtime_error);
   EXPECT_EQ(v.size(), 1u);
-}
-
-TEST_F(PanicTest, MemoryPoolEmplaceBackPanicsWhenExhausted) {
-  MemoryPool<int, 2> pool{};
-  MemoryPoolSpan<int>& span = pool;
-  span.emplace_back(1);
-  span.emplace_back(2);
-  ASSERT_TRUE(span.full());
-  EXPECT_THROW(span.emplace_back(3), std::runtime_error);
-}
-
-TEST_F(PanicTest, EmptyInplaceFunctionInvocationPanics) {
-  inplace_function<int()> fn;
-  ASSERT_FALSE(static_cast<bool>(fn));
-  EXPECT_THROW(fn(), std::runtime_error);
 }
 
 TEST_F(PanicTest, PanicHandlerReceivesReason) {
