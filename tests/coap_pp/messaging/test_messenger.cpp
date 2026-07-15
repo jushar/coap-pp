@@ -173,6 +173,30 @@ TEST_F(MessengerTest, Tick_MaxRetransmitCallsOnConTimeout) {
 // ── ACK / RST tests
 // ───────────────────────────────────────────────────────────
 
+TEST_F(MessengerTest, ReceiveACK_FromOtherEndpoint_KeepsPendingSlot) {
+  // Message IDs are only unique per endpoint pair: an ACK from a different
+  // peer that happens to carry the same MID must not cancel the pending CON.
+  Endpoint peer_a{};
+  peer_a.storage[0] = std::byte{0xAA};
+  Endpoint peer_b{};
+  peer_b.storage[0] = std::byte{0xBB};
+
+  MessageBuilder<0> b;
+  b.SetType(MessageType::kCon).SetCode(codes::kGet).SetMessageId(0x0042u);
+  ASSERT_EQ(messenger_.Send(peer_a, b.Build()), MessengerError::kOk);
+
+  const auto [ack, ack_len] = MakeAckBytes(0x0042u);
+
+  transport_.Inject(peer_b, span<const std::byte>{ack.data(), ack_len});
+  EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
+            1u);
+
+  // The ACK from the actual destination clears the slot.
+  transport_.Inject(peer_a, span<const std::byte>{ack.data(), ack_len});
+  EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
+            0u);
+}
+
 TEST_F(MessengerTest, ReceiveACK_ClearsPendingSlot) {
   MessageBuilder<0> b;
   b.SetType(MessageType::kCon).SetCode(codes::kGet).SetMessageId(0x0010u);

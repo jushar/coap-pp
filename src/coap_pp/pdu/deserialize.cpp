@@ -22,6 +22,11 @@ DeserializeError ScanOptions(span<const std::byte> raw, std::size_t pos,
     const auto byte = static_cast<uint8_t>(raw[pos]);
 
     if (byte == 0xFFu) {
+      // RFC 7252 §3: a payload marker followed by a zero-length payload MUST
+      // be processed as a message format error.
+      if (pos + 1u >= raw.size()) {
+        return DeserializeError::kInvalidPayload;
+      }
       options_end = pos;
       payload_start = pos + 1;
       return DeserializeError::kOk;

@@ -127,15 +127,15 @@ void Messenger::OnReceive(const Endpoint& sender,
   }
 
   if (msg.type == MessageType::kAck || msg.type == MessageType::kRst) {
-    AckPending(msg.message_id);
+    AckPending(sender, msg.message_id);
   }
 
   if (handler_) handler_->OnMessage(sender, msg);
 }
 
-void Messenger::AckPending(uint16_t message_id) {
-  pending_.remove_if([message_id](const PendingSlot& s) {
-    return s.message_id == message_id;
+void Messenger::AckPending(const Endpoint& sender, uint16_t message_id) {
+  pending_.remove_if([&](const PendingSlot& s) {
+    return s.message_id == message_id && s.destination == sender;
   });
 }
 

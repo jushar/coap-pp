@@ -322,6 +322,29 @@ TEST(Serialize, RoundTrip_WithOptionsAndPayload) {
   EXPECT_EQ(in_msg.payload[1], std::byte{'K'});
 }
 
+TEST(Serialize, EmptyPayloadFromCallbackOmitsMarker) {
+  // A payload callback that writes zero bytes (e.g. an empty serialized
+  // proto) must not leave a dangling 0xFF marker — RFC 7252 §3 forbids a
+  // marker with a zero-length payload.
+  OutgoingMessage msg{};
+  msg.type = MessageType::kNon;
+  msg.code = codes::kContent;
+  msg.message_id = 0x0001u;
+  msg.serialize_payload = [](span<std::byte>, std::size_t& n) {
+    n = 0u;
+    return SerializeError::kOk;
+  };
+
+  auto [buf, size, ec] = DoSerialize(msg);
+  ASSERT_EQ(ec, SerializeError::kOk);
+  EXPECT_EQ(size, 4u);  // fixed header only, no marker
+
+  Message in_msg{};
+  ASSERT_EQ(Deserialize(span<const std::byte>{buf.data(), size}, in_msg),
+            DeserializeError::kOk);
+  EXPECT_TRUE(in_msg.payload.empty());
+}
+
 // ── MessageBuilder
 // ────────────────────────────────────────────────────────────
 

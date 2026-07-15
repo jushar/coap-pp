@@ -15,8 +15,13 @@ namespace coap_pp {
 
 #ifdef COAP_PP_USE_INPLACE_FUNCTION
 
+// Fallback when building without CMake (which normally provides this).
+#ifndef COAP_PP_INPLACE_FUNCTION_CAPACITY
+#define COAP_PP_INPLACE_FUNCTION_CAPACITY 32
+#endif
+
 template <typename T>
-using function = inplace_function<T>;
+using function = inplace_function<T, COAP_PP_INPLACE_FUNCTION_CAPACITY>;
 
 #else
 

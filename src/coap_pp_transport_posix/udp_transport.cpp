@@ -66,7 +66,7 @@ void PosixUdpTransport::Stop() {
 
 TransportError PosixUdpTransport::Send(const Endpoint& destination,
                                        span<const std::byte> data) {
-  const auto& addr = destination.To<sockaddr_in>();
+  const auto addr = destination.To<sockaddr_in>();
   const auto n =
       ::sendto(fd_, data.data(), data.size(), 0,
                reinterpret_cast<const sockaddr*>(&addr), sizeof(addr));

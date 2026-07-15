@@ -20,6 +20,7 @@ enum class DeserializeError : uint8_t {
   kInvalidVersion,
   kInvalidTokenLength,
   kInvalidOption,
+  kInvalidPayload,  // payload marker present but zero-length payload
 };
 
 // Deserialize a CoAP datagram into `out`. On success returns

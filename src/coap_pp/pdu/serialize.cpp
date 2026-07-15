@@ -132,7 +132,13 @@ SerializeError Serialize(const OutgoingMessage& msg, span<std::byte> out,
     if (serialize_error != SerializeError::kOk) {
       return serialize_error;
     }
-    pos += payload_written;
+    if (payload_written == 0u) {
+      // RFC 7252 §3: a payload marker with a zero-length payload is a message
+      // format error — roll the marker back (e.g. an empty serialized proto).
+      --pos;
+    } else {
+      pos += payload_written;
+    }
   }
 
   written = pos;

@@ -98,7 +98,10 @@ class Messenger : private TransportReceiverIF {
   void OnReceive(const Endpoint& sender,
                  span<const std::byte> data) override;
 
-  void AckPending(uint16_t message_id);
+  // Cancel retransmission for the CON matching (destination, message_id).
+  // Message IDs are only unique per endpoint pair, so the sender must match
+  // the slot's destination.
+  void AckPending(const Endpoint& sender, uint16_t message_id);
 
   TransportIF& transport_;
   MessageHandlerIF* handler_{nullptr};

@@ -23,6 +23,8 @@ inline std::ostream& operator<<(std::ostream& os, DeserializeError e) {
       return os << "kInvalidTokenLength";
     case DeserializeError::kInvalidOption:
       return os << "kInvalidOption";
+    case DeserializeError::kInvalidPayload:
+      return os << "kInvalidPayload";
   }
   return os << "DeserializeError(" << static_cast<int>(e) << ")";
 }
@@ -136,6 +138,14 @@ TEST(PduDeserialize, ParsesPayloadAfterMarker) {
   ASSERT_EQ(msg.payload.size(), 2u);
   EXPECT_EQ(msg.payload[0], std::byte{'h'});
   EXPECT_EQ(msg.payload[1], std::byte{'i'});
+}
+
+TEST(PduDeserialize, PayloadMarkerWithoutPayloadReturnsError) {
+  // Payload marker 0xFF as the last byte — RFC 7252 §3 requires this to be
+  // treated as a message format error.
+  auto raw = MakeRaw(0x60, 0x45, 0x00, 0x01, 0xFF);
+  Message msg{};
+  EXPECT_EQ(Deserialize(raw, msg), DeserializeError::kInvalidPayload);
 }
 
 TEST(PduDeserialize, NoPayloadMarkerLeavesPayloadEmpty) {

@@ -8,6 +8,7 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <type_traits>
 
 namespace coap_pp {
 
@@ -37,12 +38,19 @@ struct Endpoint {
     return ep;
   }
 
+  // Returns a copy of the stored address. memcpy instead of a reinterpret_cast
+  // reference: storage is byte-aligned, so casting would be undefined behavior
+  // (misaligned access, strict aliasing) — and faults on Cortex-M.
   template <typename T>
-  const T& To() const {
+  T To() const {
     static_assert(sizeof(T) <= kStorageSize,
                   "To type is larger than the Endpoint storage");
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "Endpoint addresses must be trivially copyable");
 
-    return *reinterpret_cast<const T*>(storage.data());
+    T out;
+    std::memcpy(&out, storage.data(), sizeof(T));
+    return out;
   }
 };
 
