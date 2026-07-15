@@ -11,6 +11,7 @@
 #include "coap_pp/content_formats.hpp"
 #include "coap_pp/log.hpp"
 #include "coap_pp/option_number.hpp"
+#include "coap_pp/panic.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/server/resource.hpp"
 
@@ -46,8 +47,7 @@ CoapServer::CoapServer(Messenger& messenger, span<RouterBase*> routers)
 
 void CoapServer::AddRouter(RouterBase& router) {
   if (router_count_ >= routers_.size()) {
-    detail::Log<LogLevel::kError>("router table full, ignoring router");
-    return;
+    detail::Panic("CoapServer router table full");
   }
   routers_[router_count_++] = &router;
 }
@@ -138,7 +138,8 @@ void CoapServer::SendResponse(const Endpoint& to, MessageType req_type,
                               uint16_t req_mid, const Token& token,
                               bool as_piggybacked_ack,
                               const WireResponse& resp) {
-  MessageBuilder<2> builder;
+  // Capacity: Content-Format + up to kMaxResponseOptions handler options.
+  MessageBuilder<1 + kMaxResponseOptions> builder;
   // Originally-CON: empty ACK was already sent; deferred reply is a new CON.
   // Originally-NON: send NON with new MID.
   const bool was_con = (req_type == MessageType::kCon);
@@ -152,6 +153,9 @@ void CoapServer::SendResponse(const Endpoint& to, MessageType req_type,
       .SetToken(token);
   if (resp.content_format != ContentFormat::kNoContentFormat) {
     builder.AddOption(OptionNumber::kContentFormat, static_cast<uint32_t>(resp.content_format.Value()));
+  }
+  for (const auto& opt : resp.options) {
+    builder.AddOption(opt);
   }
   if (resp.serialize_payload) {
     builder.SetSerializePayloadCallback(resp.serialize_payload);

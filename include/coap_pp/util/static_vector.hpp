@@ -9,10 +9,13 @@
 #include <cstddef>
 #include <utility>
 
+#include "coap_pp/panic.hpp"
+
 namespace coap_pp {
 
 // Fixed-capacity vector with pre-allocated storage — never heap-allocates.
-// Silently saturates on push_back() when full.
+// Inserting into a full vector is an unrecoverable programming error and
+// panics; callers that can handle overflow must check full() first.
 template <typename T, std::size_t N>
 class StaticVector {
  public:
@@ -42,8 +45,7 @@ class StaticVector {
 
   constexpr void push_back(const T& value) {
     if (size_ == N) {
-      // TODO: Panic if full
-      return;
+      detail::Panic("StaticVector overflow");
     }
 
     data_[size_++] = value;
@@ -52,7 +54,7 @@ class StaticVector {
   template <typename... Args>
   constexpr T& emplace_back(Args&&... args) {
     if (size_ == N) {
-      // TODO: Panic if full
+      detail::Panic("StaticVector overflow");
     }
     data_[size_] = T(std::forward<Args>(args)...);
     return data_[size_++];

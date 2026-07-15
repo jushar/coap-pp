@@ -7,12 +7,14 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 
 #include "coap_pp/content_formats.hpp"
 #include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/option.hpp"
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/serde/serialize.hpp"
+#include "coap_pp/pdu/option_list.hpp"
 #include "coap_pp/transport/endpoint.hpp"
 #include "coap_pp/util/function.hpp"
 #include "coap_pp/util/span.hpp"
@@ -21,6 +23,21 @@ namespace coap_pp {
 
 class CoapServer;
 
+// Maximum number of additional options a response can carry (besides
+// Content-Format, which has its own field). Configure via the CMake
+// COAP_PP_MAX_RESPONSE_OPTIONS cache variable.
+#ifndef COAP_PP_MAX_RESPONSE_OPTIONS
+#define COAP_PP_MAX_RESPONSE_OPTIONS 4
+#endif
+inline constexpr std::size_t kMaxResponseOptions =
+    COAP_PP_MAX_RESPONSE_OPTIONS;
+
+// Additional CoAP options attached to an outbound response (e.g. ETag,
+// Max-Age, Location-Path). string/opaque values are non-owning views — the
+// referenced data must stay alive until the response has been sent. Adding
+// more than kMaxResponseOptions panics.
+using ResponseOptions = OptionList<kMaxResponseOptions>;
+
 // Wire-level response ready to be serialized by CoapServer.
 // serialize_payload is called once, synchronously, during message
 // serialization.
@@ -28,6 +45,7 @@ struct WireResponse {
   Code code{codes::kContent};
   SerializePayloadCallback serialize_payload{};
   ContentFormat content_format{ContentFormat::kNoContentFormat};
+  ResponseOptions options{};
 };
 
 // Callable passed to every RequestHandler. Call it (exactly once) to deliver
@@ -38,6 +56,10 @@ using WireSender = function<void(const WireResponse&)>;
 // Typed outbound response returned by a resource handler.
 // payload and content_format are optional; leave at defaults to send code-only
 // responses.
+//
+// Additional options (ETag, Max-Age, Location-Path, ...) can be attached via
+// AddOption(); use the content_format field for Content-Format instead of
+// AddOption, otherwise the option is emitted twice.
 template <typename T>
 struct Response {
   using BodyType = T;
@@ -45,6 +67,16 @@ struct Response {
   Code code{codes::kContent};
   T payload{};
   ContentFormat content_format{ContentFormat::kNoContentFormat};
+  ResponseOptions options{};
+
+  // Value may be std::monostate, uint32_t, std::string_view or
+  // span<const std::byte> — see OptionList::Add for the overload set and
+  // lifetime requirements.
+  template <typename V>
+  Response& AddOption(OptionNumber number, V&& value) {
+    options.Add(number, std::forward<V>(value));
+    return *this;
+  }
 };
 
 // Deduction guides — required in C++17 (aggregate CTAD is a C++20 feature).
@@ -112,7 +144,7 @@ class AsyncResponse : public AsyncResponseBase {
   // SendWireResponse is synchronous so resp outlives the callback invocation.
   template <typename T>
   void Send(const Response<T>& resp) {
-    WireResponse wire{resp.code, {}, resp.content_format};
+    WireResponse wire{resp.code, {}, resp.content_format, resp.options};
     if constexpr (std::is_same_v<T, span<const std::byte>>) {
       if (!resp.payload.empty()) {
         wire.serialize_payload = RawBytesSerializeCallback(resp.payload);

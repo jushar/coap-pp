@@ -51,6 +51,7 @@ CMake options:
 | `COAP_PP_BUILD_EXAMPLES` | `ON` | Build example programs (requires `COAP_PP_BUILD_POSIX_TRANSPORT`) |
 | `COAP_PP_BUILD_TESTS` | `ON` | Build GoogleTest suite |
 | `COAP_PP_LOG_LEVEL` | `0` | Minimum compiled-in log level (0=Debug, 1=Info, 2=Warning, 3=Error) |
+| `COAP_PP_MAX_RESPONSE_OPTIONS` | `4` | Maximum number of additional options a response can carry (besides Content-Format) |
 | `COAP_PP_USE_INPLACE_FUNCTION` | `OFF` | Use a fixed-buffer `inplace_function` instead of `std::function` for `RequestHandler` (no heap allocation) |
 | `COAP_PP_INPLACE_FUNCTION_CAPACITY` | `32` | Buffer capacity in bytes for the `inplace_function` storage (only when `COAP_PP_USE_INPLACE_FUNCTION=ON`) |
 
@@ -75,6 +76,10 @@ using namespace coap_pp;
 int main() {
     SetLogHandler([](LogLevel level, std::string_view message) {
         std::cout << message << std::endl;
+    });
+    SetPanicHandler([](const char* reason) {
+        std::cerr << reason << std::endl;
+        std::abort();
     });
 
     // 1. Transport
@@ -114,6 +119,33 @@ int main() {
 ```
 
 See [examples/serde_nanopb/serde_nanopb.cpp](examples/serde_nanopb/serde_nanopb.cpp) for a complete example including async (deferred) responses.
+
+## Threading model
+
+coap-pp uses a **single-context execution model**: the core has no internal locking, and all entry points into the library must run in the same execution context:
+
+- `Messenger::Tick()` and `Messenger::Send()`
+- datagram delivery into the CoAP layer (`TransportReceiverIF::OnReceive()`, i.e. the transport's receive path)
+- `AsyncResponse::Send()` for deferred replies
+
+On a microcontroller this is the natural model: feed received datagrams and drive `Tick()` from the same superloop or RTOS task, and deliver deferred responses from that context as well.
+
+## Response options
+
+Besides `Content-Format` (which has its own field), responses can carry additional CoAP options such as ETag, Max-Age, or Location-Path:
+
+```cpp
+auto HandleGet(const RawRequest&) {
+    Response resp{codes::kContent,
+                  as_bytes(span{kBody.data(), kBody.size()}),
+                  ContentFormat::kTextPlain};
+    resp.AddOption(OptionNumber::kMaxAge, uint32_t{60u})
+        .AddOption(OptionNumber::kLocationPath, std::string_view{"created"});
+    return resp;
+}
+```
+
+String and opaque option values are non-owning views — the referenced data must stay alive until the response has been sent (for deferred replies: until `AsyncResponse::Send()` returns). A response holds at most `COAP_PP_MAX_RESPONSE_OPTIONS` (default 4) additional options; exceeding the limit panics. Use the `content_format` field for Content-Format rather than `AddOption`, otherwise the option is emitted twice.
 
 ## Transports
 
@@ -267,7 +299,7 @@ See [examples/serde_json/serde_json.cpp](examples/serde_json/serde_json.cpp) for
 
 ## Async responses
 
-Handlers can defer their reply — useful for slow operations. The server sends an empty ACK immediately (stopping CON retransmissions) and the handler delivers the real response later from any thread:
+Handlers can defer their reply — useful for slow operations. The server sends an empty ACK immediately (stopping CON retransmissions) and the handler delivers the real response later via `AsyncResponse::Send()`. Note that `Send()` is a library entry point: if the deferred work completes on another thread (as in the sketch below), the call must be serialized with the rest of the library per the [threading model](#threading-model):
 
 ```cpp
 auto HandleSlow(const RawRequest& req) {

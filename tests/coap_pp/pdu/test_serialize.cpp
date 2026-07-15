@@ -4,7 +4,10 @@
  */
 #include <gtest/gtest.h>
 
+#include <stdexcept>
+
 #include "coap_pp/option_number.hpp"
+#include "coap_pp/panic.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/pdu/deserialize.hpp"
 #include "coap_pp/pdu/serialize.hpp"
@@ -376,14 +379,35 @@ TEST(MessageBuilder, AllOptionTypes) {
   EXPECT_EQ(std::get<std::string_view>(msg.options[3].value), "test");
 }
 
-TEST(MessageBuilder, SaturatesAtMaxOptions) {
+TEST(MessageBuilder, PanicsBeyondMaxOptions) {
+  SetPanicHandler([](const char* reason) {
+    throw std::runtime_error(reason);
+  });
+
   MessageBuilder<2> b;
   b.AddOption(OptionNumber::kUriPath, std::string_view{"a"})
-      .AddOption(OptionNumber::kUriPath, std::string_view{"b"})
-      .AddOption(OptionNumber::kUriPath, std::string_view{"c"});  // silently ignored
+      .AddOption(OptionNumber::kUriPath, std::string_view{"b"});
+  EXPECT_THROW(b.AddOption(OptionNumber::kUriPath, std::string_view{"c"}),
+               std::runtime_error);
+
+  SetPanicHandler(nullptr);
+}
+
+TEST(MessageBuilder, KeepsInsertionOrderOfRepeatableOptions) {
+  // Repeatable options (equal numbers) must keep their insertion order after
+  // the sort in Build() — Uri-Path segments would otherwise be scrambled.
+  MessageBuilder<4> b;
+  b.AddOption(OptionNumber::kUriQuery, std::string_view{"q=1"})
+      .AddOption(OptionNumber::kUriPath, std::string_view{"first"})
+      .AddOption(OptionNumber::kUriPath, std::string_view{"second"})
+      .AddOption(OptionNumber::kUriPath, std::string_view{"third"});
 
   const auto msg = b.Build();
-  EXPECT_EQ(msg.options.size(), 2u);
+  ASSERT_EQ(msg.options.size(), 4u);
+  EXPECT_EQ(std::get<std::string_view>(msg.options[0].value), "first");
+  EXPECT_EQ(std::get<std::string_view>(msg.options[1].value), "second");
+  EXPECT_EQ(std::get<std::string_view>(msg.options[2].value), "third");
+  EXPECT_EQ(msg.options[3].number, OptionNumber::kUriQuery);
 }
 
 TEST(MessageBuilder, RoundTripViaBuilder) {

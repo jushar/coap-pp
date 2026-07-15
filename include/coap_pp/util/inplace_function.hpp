@@ -10,6 +10,8 @@
 #include <type_traits>
 #include <utility>
 
+#include "coap_pp/panic.hpp"
+
 namespace coap_pp {
 
 // Fixed-buffer callable wrapper. Stores the callable in-place (no heap).
@@ -119,7 +121,12 @@ class inplace_function<R(Args...), Capacity> {
     if (destroy_) destroy_(storage_);
   }
 
+  // Invoking an empty inplace_function panics (std::function would throw
+  // std::bad_function_call here).
   R operator()(Args... args) const {
+    if (!invoke_) {
+      detail::Panic("empty inplace_function invoked");
+    }
     return invoke_(storage_, std::forward<Args>(args)...);
   }
 

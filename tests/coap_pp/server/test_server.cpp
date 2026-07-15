@@ -10,6 +10,7 @@
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/server/coap_server.hpp"
 #include "coap_pp/server/resource.hpp"
+#include "coap_pp/server/router.hpp"
 #include "fakes/fake_transport.hpp"
 
 namespace coap_pp {
@@ -275,6 +276,76 @@ TEST_F(ServerTest, Response_NoContentFormat_WhenNotSet) {
   for (const auto& opt : resp.options) {
     EXPECT_NE(opt.number, OptionNumber::kContentFormat) << "Content-Format should not be present";
   }
+}
+
+TEST_F(ServerTest, Response_AdditionalOptions_SentSortedWithContentFormat) {
+  static constexpr std::array<std::byte, 2> kEtag{std::byte{0xAA},
+                                                  std::byte{0xBB}};
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/data", [](const RawRequest&, WireSender& s) -> HandlerResult {
+          WireResponse wire{codes::kContent, {}, ContentFormat::kJson};
+          wire.options.Add(OptionNumber::kMaxAge, uint32_t{60u})
+              .Add(OptionNumber::kETag,
+                   span<const std::byte>{kEtag.data(), kEtag.size()});
+          s(wire);
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/data");
+
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const auto resp = transport_.DeserializeFirstResponse();
+
+  // Options must arrive sorted by number: ETag(4), Content-Format(12),
+  // Max-Age(14).
+  auto it = resp.options.begin();
+  ASSERT_NE(it, resp.options.end());
+  EXPECT_EQ(it->number, OptionNumber::kETag);
+  const auto etag = std::get<span<const std::byte>>(it->value);
+  ASSERT_EQ(etag.size(), 2u);
+  EXPECT_EQ(etag[0], std::byte{0xAA});
+  EXPECT_EQ(etag[1], std::byte{0xBB});
+
+  ++it;
+  ASSERT_NE(it, resp.options.end());
+  EXPECT_EQ(it->number, OptionNumber::kContentFormat);
+  EXPECT_EQ(std::get<uint32_t>(it->value), 50u);
+
+  ++it;
+  ASSERT_NE(it, resp.options.end());
+  EXPECT_EQ(it->number, OptionNumber::kMaxAge);
+  EXPECT_EQ(std::get<uint32_t>(it->value), 60u);
+
+  ++it;
+  EXPECT_EQ(it, resp.options.end());
+}
+
+TEST_F(ServerTest, Response_AddOption_ViaTypedResponse) {
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/opt", Router<>::Bind([](const RawRequest&) {
+          Response resp{codes::kContent, span<const std::byte>{}};
+          resp.AddOption(OptionNumber::kMaxAge, uint32_t{90u})
+              .AddOption(OptionNumber::kLocationPath,
+                         std::string_view{"created"});
+          return resp;
+        })}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/opt");
+
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const auto resp = transport_.DeserializeFirstResponse();
+
+  const auto max_age = resp.options.FindOption(OptionNumber::kMaxAge);
+  ASSERT_TRUE(max_age.has_value());
+  EXPECT_EQ(std::get<uint32_t>(max_age->value), 90u);
+
+  const auto location = resp.options.FindOption(OptionNumber::kLocationPath);
+  ASSERT_TRUE(location.has_value());
+  EXPECT_EQ(std::get<std::string_view>(location->value), "created");
 }
 
 // ── Multiple resources

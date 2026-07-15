@@ -5,19 +5,19 @@
 #ifndef COAP_PP_PDU_BUILDER_HPP
 #define COAP_PP_PDU_BUILDER_HPP
 
-#include <algorithm>
 #include <cstddef>
-#include <string_view>
+#include <utility>
 
+#include "coap_pp/pdu/option_list.hpp"
 #include "coap_pp/pdu/serialize.hpp"
+#include "coap_pp/util/sort.hpp"
 #include "coap_pp/util/span.hpp"
-#include "coap_pp/util/static_vector.hpp"
 
 namespace coap_pp {
 
 // Fluent builder for outgoing CoAP messages with a fixed-size option array.
-// MaxOptions controls the maximum number of options that can be added.
-// Silently saturates when MaxOptions is exceeded (embedded invariant).
+// MaxOptions controls the maximum number of options that can be added;
+// exceeding it panics.
 //
 // The OutgoingMessage returned by Build() borrows from this builder's internal
 // storage; the builder must outlive any use of the built message.
@@ -41,17 +41,17 @@ class MessageBuilder {
     return *this;
   }
 
-  MessageBuilder& AddOption(OptionNumber number, std::monostate) {
-    return Push(OptionView{number, std::monostate{}});
+  // Value may be std::monostate, uint32_t, std::string_view or
+  // span<const std::byte> — see OptionList::Add for the overload set and
+  // lifetime requirements.
+  template <typename V>
+  MessageBuilder& AddOption(OptionNumber number, V&& value) {
+    options_.Add(number, std::forward<V>(value));
+    return *this;
   }
-  MessageBuilder& AddOption(OptionNumber number, uint32_t value) {
-    return Push(OptionView{number, value});
-  }
-  MessageBuilder& AddOption(OptionNumber number, std::string_view value) {
-    return Push(OptionView{number, value});
-  }
-  MessageBuilder& AddOption(OptionNumber number, span<const std::byte> value) {
-    return Push(OptionView{number, value});
+  MessageBuilder& AddOption(const OptionView& option) {
+    options_.Add(option);
+    return *this;
   }
 
   MessageBuilder& SetSerializePayloadCallback(
@@ -62,10 +62,12 @@ class MessageBuilder {
 
   // Sorts options ascending by number and returns a view into internal storage.
   [[nodiscard]] OutgoingMessage Build() {
-    std::sort(options_.begin(), options_.end(),
-              [](const OptionView& a, const OptionView& b) {
-                return a.number < b.number;
-              });
+    // Stable sort: repeatable options such as Uri-Path segments must keep
+    // their insertion order.
+    InsertionSort(options_.begin(), options_.end(),
+                  [](const OptionView& a, const OptionView& b) {
+                    return a.number < b.number;
+                  });
     return OutgoingMessage{
         type_,
         code_,
@@ -77,16 +79,11 @@ class MessageBuilder {
   }
 
  private:
-  MessageBuilder& Push(OptionView ov) {
-    options_.push_back(ov);
-    return *this;
-  }
-
   MessageType type_{MessageType::kCon};
   Code code_{};
   uint16_t message_id_{0};
   Token token_{};
-  StaticVector<OptionView, MaxOptions> options_{};
+  OptionList<MaxOptions> options_{};
   SerializePayloadCallback serialize_payload_cb_{};
 };
 

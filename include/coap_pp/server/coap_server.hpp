@@ -39,7 +39,8 @@ class CoapServer : private MessageHandlerIF {
   // routers is caller-provided storage for RouterBase pointers.
   CoapServer(Messenger& messenger, span<RouterBase*> routers);
 
-  // Mount a router. Silently no-ops when the routers span is full.
+  // Mount a router. Panics when the routers span is full (a misconfigured
+  // router table is a programming error).
   void AddRouter(RouterBase& router);
 
  private:

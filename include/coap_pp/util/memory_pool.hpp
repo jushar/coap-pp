@@ -9,6 +9,8 @@
 #include <cstddef>
 #include <utility>
 
+#include "coap_pp/panic.hpp"
+
 namespace coap_pp {
 
 // Non-owning FIFO manager over a contiguous T array.
@@ -35,8 +37,13 @@ class MemoryPoolSpan {
 
   // With no args: claims the next slot without reinitialising it (caller fills
   // all fields). With args: constructs T in-place from those arguments.
+  // Panics when full; callers that can handle exhaustion must check full()
+  // first.
   template <typename... Args>
   T& emplace_back(Args&&... args) {
+    if (full()) {
+      detail::Panic("MemoryPool exhausted");
+    }
     if constexpr (sizeof...(args) > 0) {
       ::new (&data_[count_]) T(std::forward<Args>(args)...);
     }

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This project is a WIP implementation of the CoAP protocol in modern C++ (C++20). It especially targets small embedded systems (for example STM32 Cortex-M MCU series) in a functional safety context.
+This project is a WIP implementation of the CoAP protocol in modern C++ (C++17). It especially targets small embedded systems (for example STM32 Cortex-M MCU series) in a functional safety context.
 
 ## Code style
 

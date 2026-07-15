@@ -159,7 +159,7 @@ class Router : public RouterBase {
                           response.payload.empty()
                               ? SerializePayloadCallback{}
                               : RawBytesSerializeCallback(response.payload),
-                          response.content_format};
+                          response.content_format, response.options};
     } else {
       const ContentFormat cf =
           (response.content_format != ContentFormat::kNoContentFormat)
@@ -167,7 +167,8 @@ class Router : public RouterBase {
               : Serializer::kContentFormat;
       return WireResponse{
           response.code,
-          SerializerSerializeCallback<Serializer>(response.payload), cf};
+          SerializerSerializeCallback<Serializer>(response.payload), cf,
+          response.options};
     }
   }
 };
