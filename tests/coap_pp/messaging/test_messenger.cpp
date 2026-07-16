@@ -333,6 +333,83 @@ TEST_F(MessengerTest, OnReceive_UnknownVersionCON_SilentlyDiscarded) {
   EXPECT_EQ(transport_.sends_.size(), 0u);
 }
 
+// ── Type/code semantic validation (§4.2 – §4.3)
+// ────────────────────────────
+
+TEST_F(MessengerTest, ReceiveACK_WithRequestCode_IgnoredAndKeepsPendingSlot) {
+  // §4.2: an ACK must be empty or carry a response; one carrying a request
+  // must be rejected by silently ignoring it — no dispatch, and it must not
+  // cancel the pending CON it happens to match.
+  MessageBuilder<0> con;
+  con.SetType(MessageType::kCon).SetCode(codes::kGet).SetMessageId(0x0042u);
+  ASSERT_EQ(messenger_.Send(Endpoint{}, con.Build()), MessengerError::kOk);
+
+  MessageBuilder<0> b;
+  b.SetType(MessageType::kAck).SetCode(codes::kGet).SetMessageId(0x0042u);
+  std::array<std::byte, 8> buf{};
+  std::size_t written = 0u;
+  (void)Serialize(b.Build(), buf, written);
+  transport_.Inject(Endpoint{}, span<const std::byte>{buf.data(), written});
+
+  EXPECT_EQ(handler_.message_count_, 0);
+  EXPECT_EQ(transport_.sends_.size(), 1u);  // only the initial CON send
+  EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
+            1u);
+}
+
+TEST_F(MessengerTest, ReceiveACK_WithResponseCode_DispatchedAndClearsSlot) {
+  // A piggybacked response (§5.2.1) is a valid ACK: it both cancels the
+  // pending CON and reaches the handler.
+  MessageBuilder<0> con;
+  con.SetType(MessageType::kCon).SetCode(codes::kGet).SetMessageId(0x0042u);
+  ASSERT_EQ(messenger_.Send(Endpoint{}, con.Build()), MessengerError::kOk);
+
+  MessageBuilder<0> b;
+  b.SetType(MessageType::kAck).SetCode(codes::kContent).SetMessageId(0x0042u);
+  std::array<std::byte, 8> buf{};
+  std::size_t written = 0u;
+  (void)Serialize(b.Build(), buf, written);
+  transport_.Inject(Endpoint{}, span<const std::byte>{buf.data(), written});
+
+  EXPECT_EQ(handler_.message_count_, 1);
+  EXPECT_EQ(handler_.last_.type, MessageType::kAck);
+  EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
+            0u);
+}
+
+TEST_F(MessengerTest, ReceiveRST_WithNonEmptyCode_IgnoredAndKeepsPendingSlot) {
+  // §4.2: an RST must be empty; a non-empty one is rejected by silently
+  // ignoring it and must not cancel the pending CON.
+  MessageBuilder<0> con;
+  con.SetType(MessageType::kCon).SetCode(codes::kGet).SetMessageId(0x0020u);
+  ASSERT_EQ(messenger_.Send(Endpoint{}, con.Build()), MessengerError::kOk);
+
+  MessageBuilder<0> b;
+  b.SetType(MessageType::kRst).SetCode(codes::kContent).SetMessageId(0x0020u);
+  std::array<std::byte, 8> buf{};
+  std::size_t written = 0u;
+  (void)Serialize(b.Build(), buf, written);
+  transport_.Inject(Endpoint{}, span<const std::byte>{buf.data(), written});
+
+  EXPECT_EQ(handler_.message_count_, 0);
+  EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
+            1u);
+}
+
+TEST_F(MessengerTest, ReceiveEmptyNON_SilentlyDiscarded) {
+  // §4.3: a NON must not be empty. Rejection may involve an RST, but we drop
+  // silently — either way it must not reach the handler.
+  MessageBuilder<0> b;
+  b.SetType(MessageType::kNon).SetCode(codes::kEmpty).SetMessageId(0x0099u);
+  std::array<std::byte, 8> buf{};
+  std::size_t written = 0u;
+  (void)Serialize(b.Build(), buf, written);
+  transport_.Inject(Endpoint{}, span<const std::byte>{buf.data(), written});
+
+  EXPECT_EQ(handler_.message_count_, 0);
+  EXPECT_EQ(transport_.sends_.size(), 0u);
+}
+
 TEST_F(MessengerTest, TransportSetReceiverCalledInConstructor) {
   EXPECT_NE(transport_.receiver_, nullptr);
 }

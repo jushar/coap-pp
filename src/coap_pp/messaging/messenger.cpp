@@ -134,6 +134,19 @@ void Messenger::OnReceive(const Endpoint& sender,
     return;
   }
 
+  // §4.2 – §4.3: reject semantically invalid type/code combinations (a
+  // request in an ACK, a non-empty RST, an empty NON) before they can have
+  // any effect — in particular a rejected ACK/RST must not cancel a pending
+  // CON. Rejecting an ACK or RST means silently ignoring it (§4.2); for a
+  // NON an optional RST is allowed (§4.3), we drop silently.
+  if (!IsValidTypeCodeCombination(msg.type, msg.code)) {
+    detail::Log<LogLevel::kDebug>(
+        "discarding MID %u: code %u.%02u invalid for message type %u",
+        msg.message_id, msg.code.ClassBits(), msg.code.DetailBits(),
+        static_cast<unsigned>(msg.type));
+    return;
+  }
+
   if (msg.type == MessageType::kAck || msg.type == MessageType::kRst) {
     AckPending(sender, msg.message_id);
   }

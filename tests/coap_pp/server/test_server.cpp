@@ -167,6 +167,46 @@ TEST_F(ServerTest, Dispatch_EmptyNON_Ignored) {
   EXPECT_EQ(transport_.sends_.size(), 0u);
 }
 
+TEST_F(ServerTest, Dispatch_RequestCodeInACK_NotTreatedAsRequest) {
+  // §4.2: an ACK must never carry a request. A GET arriving in an ACK-typed
+  // message on a registered route must not invoke the handler and must not
+  // be answered.
+  bool called = false;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/res",
+        [&called](const RawRequest&, WireSender& s) -> HandlerResult {
+          called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kAck, codes::kGet, 0x0001u, "/res");
+
+  EXPECT_FALSE(called);
+  EXPECT_EQ(transport_.sends_.size(), 0u);
+}
+
+TEST_F(ServerTest, Dispatch_RequestCodeInRST_NotTreatedAsRequest) {
+  // Same for RST: it must be empty (§4.2); a GET in an RST is discarded.
+  bool called = false;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/res",
+        [&called](const RawRequest&, WireSender& s) -> HandlerResult {
+          called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kRst, codes::kGet, 0x0001u, "/res");
+
+  EXPECT_FALSE(called);
+  EXPECT_EQ(transport_.sends_.size(), 0u);
+}
+
 TEST_F(ServerTest, Dispatch_ResponseCode_Ignored) {
   // A 2.05 Content message arriving as a "request" should be silently dropped.
   MessageBuilder<0> b;

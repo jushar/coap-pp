@@ -84,6 +84,30 @@ inline constexpr Code kProxyingNotSupported = Code::Make(5, 5);
          method == codes::kDelete;
 }
 
+// True if the code denotes a request method (class 0, nonzero detail).
+[[nodiscard]] constexpr bool IsRequest(Code code) {
+  return code.ClassBits() == 0u && code.DetailBits() != 0u;
+}
+
+// RFC 7252 §4.2 – §4.3 message-type/code semantics: a CON may carry anything
+// (an empty CON is a ping), a NON must not be empty, an ACK must be empty or
+// carry a response, and an RST must be empty. Invalid combinations must be
+// rejected — which for ACK/RST means silently ignoring the message (§4.2).
+[[nodiscard]] constexpr bool IsValidTypeCodeCombination(MessageType type,
+                                                        Code code) {
+  switch (type) {
+    case MessageType::kCon:
+      return true;
+    case MessageType::kNon:
+      return code != codes::kEmpty;
+    case MessageType::kAck:
+      return !IsRequest(code);
+    case MessageType::kRst:
+      return code == codes::kEmpty;
+  }
+  return false;
+}
+
 // CoAP token: 0–8 bytes, fixed-size storage (no heap).
 struct Token {
   static constexpr uint8_t kMaxLength = 8;

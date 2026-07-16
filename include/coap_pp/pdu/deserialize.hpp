@@ -13,7 +13,8 @@
 namespace coap_pp {
 
 // Structural deserialization errors. Semantic validity (e.g. type/code
-// combinations) is the responsibility of the layer above.
+// combinations) is the responsibility of the layer above: the Messenger
+// enforces it via IsValidTypeCodeCombination before dispatching.
 enum class DeserializeError : uint8_t {
   kOk = 0,
   kMessageTooShort,

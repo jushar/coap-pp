@@ -356,6 +356,38 @@ TEST(Code, EqualityIsValueBased) {
   EXPECT_NE(codes::kGet, codes::kPost);
 }
 
+TEST(Code, IsRequest) {
+  EXPECT_TRUE(IsRequest(codes::kGet));
+  EXPECT_TRUE(IsRequest(codes::kPost));
+  EXPECT_TRUE(IsRequest(Code::Make(0, 31)));  // unassigned but still class 0
+  EXPECT_FALSE(IsRequest(codes::kEmpty));
+  EXPECT_FALSE(IsRequest(codes::kContent));
+  EXPECT_FALSE(IsRequest(codes::kNotFound));
+}
+
+TEST(Code, IsValidTypeCodeCombination) {
+  // CON: anything goes at the message layer (empty CON is a ping).
+  EXPECT_TRUE(IsValidTypeCodeCombination(MessageType::kCon, codes::kEmpty));
+  EXPECT_TRUE(IsValidTypeCodeCombination(MessageType::kCon, codes::kGet));
+  EXPECT_TRUE(IsValidTypeCodeCombination(MessageType::kCon, codes::kContent));
+
+  // NON: must not be empty.
+  EXPECT_FALSE(IsValidTypeCodeCombination(MessageType::kNon, codes::kEmpty));
+  EXPECT_TRUE(IsValidTypeCodeCombination(MessageType::kNon, codes::kGet));
+  EXPECT_TRUE(IsValidTypeCodeCombination(MessageType::kNon, codes::kContent));
+
+  // ACK: empty or response, never a request.
+  EXPECT_TRUE(IsValidTypeCodeCombination(MessageType::kAck, codes::kEmpty));
+  EXPECT_TRUE(IsValidTypeCodeCombination(MessageType::kAck, codes::kContent));
+  EXPECT_TRUE(IsValidTypeCodeCombination(MessageType::kAck, codes::kNotFound));
+  EXPECT_FALSE(IsValidTypeCodeCombination(MessageType::kAck, codes::kGet));
+
+  // RST: must be empty.
+  EXPECT_TRUE(IsValidTypeCodeCombination(MessageType::kRst, codes::kEmpty));
+  EXPECT_FALSE(IsValidTypeCodeCombination(MessageType::kRst, codes::kGet));
+  EXPECT_FALSE(IsValidTypeCodeCombination(MessageType::kRst, codes::kContent));
+}
+
 // ── Token equality
 // ────────────────────────────────────────────────────────────
 

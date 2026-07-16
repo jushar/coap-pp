@@ -53,10 +53,16 @@ void CoapServer::AddRouter(RouterBase& router) {
 }
 
 void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
+  // Only CON and NON messages can carry requests (RFC 7252 §4.2 – §4.3). The
+  // Messenger already discards ACK/RST with a request code, but the server
+  // guards its own contract: never treat an ACK- or RST-typed message as a
+  // request, regardless of what dispatched it.
+  if (msg.type != MessageType::kCon && msg.type != MessageType::kNon) return;
+
   // Ignore responses and empty messages (code class != 0, or code == 0.00).
   // CoAP pings (empty CON) never reach this point: the Messenger answers
   // them with RST before dispatch (RFC 7252 §4.3).
-  if (msg.code.ClassBits() != 0u || msg.code == codes::kEmpty) return;
+  if (!IsRequest(msg.code)) return;
 
   // Reconstruct the request URI path from Uri-Path options.
   char path_buf[256];

@@ -9,13 +9,12 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "coap_pp/util/span.hpp"
-
 #include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/transport/endpoint.hpp"
 #include "coap_pp/transport/transport_if.hpp"
 #include "coap_pp/util/memory_pool.hpp"
+#include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
 
@@ -42,9 +41,11 @@ class MessageHandlerIF {
 };
 
 // Ties a TransportIF to CoAP deserialize/dispatch and RFC 7252 §4.2 CON
-// retransmission. Message-layer signaling is handled here before dispatch:
-// CoAP pings (empty CON, §4.3) are answered with a matching RST, and
-// malformed CON messages with an intact fixed header are rejected with RST.
+// retransmission. Message-layer signaling and validation are handled here
+// before dispatch: CoAP pings (empty CON, §4.3) are answered with a matching
+// RST, malformed CON messages with an intact fixed header are rejected with
+// RST, and messages with a type/code combination invalid per §4.2 – §4.3
+// (request in an ACK, non-empty RST, empty NON) are silently discarded.
 //
 // Usage:
 //   MemoryPool<Messenger::PendingSlot, 4> pool;
@@ -97,8 +98,7 @@ class Messenger : private TransportReceiverIF {
 
  private:
   // TransportReceiverIF — called by the transport on datagram arrival.
-  void OnReceive(const Endpoint& sender,
-                 span<const std::byte> data) override;
+  void OnReceive(const Endpoint& sender, span<const std::byte> data) override;
 
   // Cancel retransmission for the CON matching (destination, message_id).
   // Message IDs are only unique per endpoint pair, so the sender must match
