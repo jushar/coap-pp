@@ -19,6 +19,9 @@ set_property(CACHE COAP_PP_LOG_LEVEL PROPERTY STRINGS "0" "1" "2" "3")
 set(COAP_PP_MAX_RESPONSE_OPTIONS "4" CACHE STRING
     "Maximum number of additional options a response can carry (besides Content-Format)")
 
+set(COAP_PP_DUPLICATE_CACHE_SIZE "8" CACHE STRING
+    "Number of recent non-idempotent requests remembered for duplicate detection (RFC 7252 §4.5)")
+
 add_library(coap-pp STATIC
     src/coap_pp/log.cpp
     src/coap_pp/panic.cpp
@@ -33,7 +36,8 @@ target_compile_features(coap-pp PUBLIC cxx_std_17)
 target_link_libraries(coap-pp PRIVATE coap-pp-warnings)
 target_compile_definitions(coap-pp PUBLIC
     COAP_PP_LOG_LEVEL=${COAP_PP_LOG_LEVEL}
-    COAP_PP_MAX_RESPONSE_OPTIONS=${COAP_PP_MAX_RESPONSE_OPTIONS})
+    COAP_PP_MAX_RESPONSE_OPTIONS=${COAP_PP_MAX_RESPONSE_OPTIONS}
+    COAP_PP_DUPLICATE_CACHE_SIZE=${COAP_PP_DUPLICATE_CACHE_SIZE})
 if(DEFINED COAP_PP_NO_STD_SPAN)
     target_compile_definitions(coap-pp PUBLIC COAP_PP_NO_STD_SPAN=${COAP_PP_NO_STD_SPAN})
 endif()

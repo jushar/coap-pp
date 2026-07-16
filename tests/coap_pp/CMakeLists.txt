@@ -10,6 +10,7 @@ add_executable(coap-pp-tests
     util/test_inplace_function.cpp
     util/test_memory_pool.cpp
     util/test_panic.cpp
+    util/test_ring_buffer.cpp
 )
 
 target_link_libraries(coap-pp-tests PRIVATE

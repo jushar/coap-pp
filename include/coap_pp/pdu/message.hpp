@@ -77,6 +77,13 @@ inline constexpr Code kGatewayTimeout = Code::Make(5, 4);
 inline constexpr Code kProxyingNotSupported = Code::Make(5, 5);
 }  // namespace codes
 
+// RFC 7252 §5.1: GET, PUT and DELETE are idempotent request methods; POST is
+// not. Unknown method codes are conservatively treated as non-idempotent.
+[[nodiscard]] inline bool IsIdempotent(Code method) {
+  return method == codes::kGet || method == codes::kPut ||
+         method == codes::kDelete;
+}
+
 // CoAP token: 0–8 bytes, fixed-size storage (no heap).
 struct Token {
   static constexpr uint8_t kMaxLength = 8;

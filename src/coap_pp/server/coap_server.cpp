@@ -97,6 +97,26 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
     return;
   }
 
+  // §4.5 duplicate detection: a retransmitted non-idempotent request must not
+  // re-execute the handler. A duplicate CON gets an empty ACK so the client
+  // stops retransmitting (the real response — piggybacked or deferred — was
+  // already sent for the original); a duplicate NON is silently ignored.
+  // Idempotent methods skip the cache entirely and are simply re-executed.
+  // Error paths above (4.04/4.05) are also re-executed so their piggybacked
+  // ACK is re-sent.
+  if (!IsIdempotent(msg.code)) {
+    if (IsDuplicate(sender, msg.message_id)) {
+      detail::Log<LogLevel::kDebug>("%.*s: dropping duplicate MID %u",
+                                    static_cast<int>(path_len), path_buf,
+                                    msg.message_id);
+      if (msg.type == MessageType::kCon) {
+        SendEmptyAck(sender, msg.message_id);
+      }
+      return;
+    }
+    seen_requests_.Push(SeenRequest{sender, msg.message_id});
+  }
+
   detail::Log<LogLevel::kDebug>("%.*s: Incoming request",
                                 static_cast<int>(path_len), path_buf);
 
@@ -121,6 +141,14 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
       SendEmptyAck(sender, msg.message_id);
     }
   }
+}
+
+bool CoapServer::IsDuplicate(const Endpoint& sender,
+                             uint16_t message_id) const {
+  for (const SeenRequest& seen : seen_requests_) {
+    if (seen.message_id == message_id && seen.sender == sender) return true;
+  }
+  return false;
 }
 
 void CoapServer::SendEmptyAck(const Endpoint& to, uint16_t message_id) {

@@ -29,8 +29,8 @@ class ServerTest : public ::testing::Test {
   CoapServer server_{messenger_, router_storage_};
 
   void InjectRequest(MessageType type, Code method, uint16_t mid,
-                     std::string_view path,
-                     span<const std::byte> payload = {}) {
+                     std::string_view path, span<const std::byte> payload = {},
+                     const Endpoint& sender = Endpoint{}) {
     MessageBuilder<4> b;
     b.SetType(type).SetCode(method).SetMessageId(mid);
     std::string_view remaining = path;
@@ -49,7 +49,7 @@ class ServerTest : public ::testing::Test {
     std::array<std::byte, 256> buf{};
     std::size_t written = 0u;
     (void)Serialize(b.Build(), buf, written);
-    transport_.Inject(Endpoint{}, span<const std::byte>{buf.data(), written});
+    transport_.Inject(sender, span<const std::byte>{buf.data(), written});
   }
 };
 
@@ -488,6 +488,165 @@ TEST_F(ServerTest, MultipleRouters_EachDispatches) {
 
   EXPECT_TRUE(sensors_called);
   EXPECT_TRUE(actuators_called);
+}
+
+// ── Duplicate detection (RFC 7252 §4.5)
+// ───────────────────────────────────────
+
+TEST_F(ServerTest, Duplicate_CON_POST_HandlerRunsOnce_GetsEmptyAck) {
+  int call_count = 0;
+  const std::array<Route, 1> routes{
+      {{codes::kPost, "/act", [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          ++call_count;
+          s(WireResponse{codes::kChanged});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kCon, codes::kPost, 0x0042u, "/act");
+  InjectRequest(MessageType::kCon, codes::kPost, 0x0042u, "/act");
+
+  EXPECT_EQ(call_count, 1);
+  ASSERT_EQ(transport_.sends_.size(), 2u);
+  // First send: piggybacked 2.04 ACK. Second: empty ACK for the duplicate.
+  const auto first = transport_.DeserializeFirstResponse();
+  EXPECT_EQ(first.type, MessageType::kAck);
+  EXPECT_EQ(first.code, codes::kChanged);
+  const auto second = transport_.DeserializeResponseAt(1);
+  EXPECT_EQ(second.type, MessageType::kAck);
+  EXPECT_EQ(second.code, codes::kEmpty);
+  EXPECT_EQ(second.message_id, 0x0042u);
+}
+
+TEST_F(ServerTest, Duplicate_NON_POST_SilentlyIgnored) {
+  int call_count = 0;
+  const std::array<Route, 1> routes{
+      {{codes::kPost, "/act", [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          ++call_count;
+          s(WireResponse{codes::kChanged});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kPost, 0x0042u, "/act");
+  InjectRequest(MessageType::kNon, codes::kPost, 0x0042u, "/act");
+
+  EXPECT_EQ(call_count, 1);
+  EXPECT_EQ(transport_.sends_.size(), 1u);
+}
+
+TEST_F(ServerTest, Duplicate_CON_GET_IsReexecuted) {
+  // GET is idempotent — a retransmission re-runs the handler, which re-sends
+  // the (possibly lost) piggybacked response.
+  int call_count = 0;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/temp", [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          ++call_count;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kCon, codes::kGet, 0x0042u, "/temp");
+  InjectRequest(MessageType::kCon, codes::kGet, 0x0042u, "/temp");
+
+  EXPECT_EQ(call_count, 2);
+  ASSERT_EQ(transport_.sends_.size(), 2u);
+  EXPECT_EQ(transport_.DeserializeResponseAt(1).code, codes::kContent);
+}
+
+TEST_F(ServerTest, Duplicate_DifferentMid_IsNotADuplicate) {
+  int call_count = 0;
+  const std::array<Route, 1> routes{
+      {{codes::kPost, "/act", [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          ++call_count;
+          s(WireResponse{codes::kChanged});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kCon, codes::kPost, 0x0001u, "/act");
+  InjectRequest(MessageType::kCon, codes::kPost, 0x0002u, "/act");
+
+  EXPECT_EQ(call_count, 2);
+}
+
+TEST_F(ServerTest, Duplicate_SameMid_DifferentEndpoint_IsNotADuplicate) {
+  int call_count = 0;
+  const std::array<Route, 1> routes{
+      {{codes::kPost, "/act", [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          ++call_count;
+          s(WireResponse{codes::kChanged});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  Endpoint other{};
+  other.storage[0] = std::byte{0x01};
+
+  InjectRequest(MessageType::kNon, codes::kPost, 0x0042u, "/act");
+  InjectRequest(MessageType::kNon, codes::kPost, 0x0042u, "/act", {}, other);
+
+  EXPECT_EQ(call_count, 2);
+}
+
+TEST_F(ServerTest, Duplicate_EvictedFromRing_IsReexecuted) {
+  int call_count = 0;
+  const std::array<Route, 1> routes{
+      {{codes::kPost, "/act", [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          ++call_count;
+          s(WireResponse{codes::kChanged});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  // MID 0x0000 is remembered, then evicted by kDuplicateCacheSize newer
+  // requests; re-injecting it must execute the handler again.
+  InjectRequest(MessageType::kNon, codes::kPost, 0x0000u, "/act");
+  for (uint16_t mid = 1; mid <= kDuplicateCacheSize; ++mid) {
+    InjectRequest(MessageType::kNon, codes::kPost, mid, "/act");
+  }
+  const int calls_before_replay = call_count;
+  InjectRequest(MessageType::kNon, codes::kPost, 0x0000u, "/act");
+
+  EXPECT_EQ(call_count, calls_before_replay + 1);
+}
+
+TEST_F(ServerTest, Duplicate_CON_POST_Async_HandlerRunsOnce) {
+  AsyncResponse pending;
+  int call_count = 0;
+  const std::array<Route, 1> routes{
+      {{codes::kPost, "/slow",
+        [&](const RawRequest& req, WireSender&) -> HandlerResult {
+          ++call_count;
+          pending = req.MakeAsync();
+          return HandlerResult::kAsync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kCon, codes::kPost, 0x0042u, "/slow");
+  InjectRequest(MessageType::kCon, codes::kPost, 0x0042u, "/slow");
+
+  // Handler ran once; both the original and the duplicate got an empty ACK.
+  EXPECT_EQ(call_count, 1);
+  ASSERT_EQ(transport_.sends_.size(), 2u);
+  for (std::size_t i = 0; i < 2; ++i) {
+    const auto ack = transport_.DeserializeResponseAt(i);
+    EXPECT_EQ(ack.type, MessageType::kAck);
+    EXPECT_EQ(ack.code, codes::kEmpty);
+    EXPECT_EQ(ack.message_id, 0x0042u);
+  }
+
+  pending.Send(WireResponse{codes::kChanged});
+  ASSERT_EQ(transport_.sends_.size(), 3u);
+  EXPECT_EQ(transport_.DeserializeResponseAt(2).code, codes::kChanged);
 }
 
 // ── Async handlers

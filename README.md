@@ -52,6 +52,7 @@ CMake options:
 | `COAP_PP_BUILD_TESTS` | `ON` | Build GoogleTest suite |
 | `COAP_PP_LOG_LEVEL` | `0` | Minimum compiled-in log level (0=Debug, 1=Info, 2=Warning, 3=Error) |
 | `COAP_PP_MAX_RESPONSE_OPTIONS` | `4` | Maximum number of additional options a response can carry (besides Content-Format) |
+| `COAP_PP_DUPLICATE_CACHE_SIZE` | `8` | Number of recent non-idempotent requests remembered for duplicate detection (RFC 7252 §4.5) |
 | `COAP_PP_USE_INPLACE_FUNCTION` | `OFF` | Use a fixed-buffer `inplace_function` instead of `std::function` for `RequestHandler` (no heap allocation) |
 | `COAP_PP_INPLACE_FUNCTION_CAPACITY` | `32` | Buffer capacity in bytes for the `inplace_function` storage (only when `COAP_PP_USE_INPLACE_FUNCTION=ON`) |
 

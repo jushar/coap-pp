@@ -10,9 +10,18 @@
 
 #include "coap_pp/messaging/messenger.hpp"
 #include "coap_pp/server/router_base.hpp"
+#include "coap_pp/util/ring_buffer.hpp"
 #include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
+
+// Number of (endpoint, message ID) pairs remembered for RFC 7252 §4.5
+// duplicate detection of non-idempotent requests. Configure via the CMake
+// COAP_PP_DUPLICATE_CACHE_SIZE cache variable.
+#ifndef COAP_PP_DUPLICATE_CACHE_SIZE
+#define COAP_PP_DUPLICATE_CACHE_SIZE 8
+#endif
+inline constexpr std::size_t kDuplicateCacheSize = COAP_PP_DUPLICATE_CACHE_SIZE;
 
 // High-level CoAP server: dispatches incoming requests to registered Router
 // objects.
@@ -28,6 +37,9 @@ namespace coap_pp {
 //   server.AddRouter(api);
 //
 //   // CON requests automatically get piggybacked ACK responses.
+//   // Retransmitted non-idempotent requests (POST) are detected and not
+//   // re-executed (§4.5); duplicate CONs get an empty ACK, duplicate NONs
+//   // are dropped.
 //   // Unregistered paths -> 4.04 Not Found.
 //   // Path matched but wrong method -> 4.05 Method Not Allowed.
 //   // Deserialization failure -> 4.00 Bad Request.
@@ -57,12 +69,25 @@ class CoapServer : private MessageHandlerIF {
 
   void SendEmptyAck(const Endpoint& to, uint16_t message_id);
 
+  // RFC 7252 §4.5 duplicate detection for non-idempotent requests. Entries
+  // are evicted by newer requests rather than by time, so a client must not
+  // reuse a message ID while it is still among the last kDuplicateCacheSize
+  // non-idempotent requests (guaranteed by RFC-conforming sequential MID
+  // assignment except across a client reboot).
+  struct SeenRequest {
+    Endpoint sender{};
+    uint16_t message_id{0};
+  };
+
+  bool IsDuplicate(const Endpoint& sender, uint16_t message_id) const;
+
   friend class AsyncResponseBase;
 
   Messenger& messenger_;
   span<RouterBase*> routers_;
   std::size_t router_count_{0};
   uint16_t next_mid_{1u};
+  RingBuffer<SeenRequest, kDuplicateCacheSize> seen_requests_{};
 };
 
 }  // namespace coap_pp
