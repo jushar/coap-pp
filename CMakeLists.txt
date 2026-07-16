@@ -9,7 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_library(coap-pp-warnings INTERFACE)
 target_compile_options(coap-pp-warnings INTERFACE
     $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:
-        -Wall -Wpedantic -Werror -Wno-array-bounds>
+        -Wall -Wextra -Wpedantic -Werror -Wno-array-bounds>
 )
 
 set(COAP_PP_LOG_LEVEL "0" CACHE STRING
