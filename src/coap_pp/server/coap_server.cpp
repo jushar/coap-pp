@@ -53,7 +53,9 @@ void CoapServer::AddRouter(RouterBase& router) {
 }
 
 void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
-  // Ignore responses and pings (code class != 0, or code == 0.00).
+  // Ignore responses and empty messages (code class != 0, or code == 0.00).
+  // CoAP pings (empty CON) never reach this point: the Messenger answers
+  // them with RST before dispatch (RFC 7252 §4.3).
   if (msg.code.ClassBits() != 0u || msg.code == codes::kEmpty) return;
 
   // Reconstruct the request URI path from Uri-Path options.

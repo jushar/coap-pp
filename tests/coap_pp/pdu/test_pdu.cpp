@@ -69,6 +69,42 @@ TEST(PduDeserialize, TokenLongerThanMessageReturnsError) {
   EXPECT_EQ(Deserialize(raw, msg), DeserializeError::kMessageTooShort);
 }
 
+TEST(PduDeserializeFixedHeader, ParsesTypeCodeMidAndRawTkl) {
+  // Ver = 1, T = CON, TKL = 9 (invalid for a full message, raw nibble here)
+  auto raw = MakeRaw(0x49, 0x01, 0x12, 0x34);
+  FixedHeader hdr{};
+  ASSERT_EQ(DeserializeFixedHeader(raw, hdr), DeserializeError::kOk);
+  EXPECT_EQ(hdr.type, MessageType::kCon);
+  EXPECT_EQ(hdr.code, codes::kGet);
+  EXPECT_EQ(hdr.message_id, 0x1234u);
+  EXPECT_EQ(hdr.token_length, 9u);
+}
+
+TEST(PduDeserializeFixedHeader, SucceedsWhereFullDeserializeFails) {
+  // Truncated token: full Deserialize rejects, but the fixed header is intact
+  // — the layer above relies on this to send a matching RST (§4.2).
+  auto raw = MakeRaw(0x44, 0x01, 0xAB, 0xCD, 0xAA, 0xBB);
+  Message msg{};
+  ASSERT_EQ(Deserialize(raw, msg), DeserializeError::kMessageTooShort);
+  FixedHeader hdr{};
+  ASSERT_EQ(DeserializeFixedHeader(raw, hdr), DeserializeError::kOk);
+  EXPECT_EQ(hdr.message_id, 0xABCDu);
+}
+
+TEST(PduDeserializeFixedHeader, TooShortReturnsError) {
+  auto raw = MakeRaw(0x40, 0x01, 0x00);
+  FixedHeader hdr{};
+  EXPECT_EQ(DeserializeFixedHeader(raw, hdr),
+            DeserializeError::kMessageTooShort);
+}
+
+TEST(PduDeserializeFixedHeader, InvalidVersionReturnsError) {
+  auto raw = MakeRaw(0x80, 0x01, 0x00, 0x01);
+  FixedHeader hdr{};
+  EXPECT_EQ(DeserializeFixedHeader(raw, hdr),
+            DeserializeError::kInvalidVersion);
+}
+
 // ── Message types
 // ─────────────────────────────────────────────────────────────
 

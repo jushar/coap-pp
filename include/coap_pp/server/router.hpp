@@ -121,7 +121,7 @@ class Router : public RouterBase {
       if constexpr (detail::is_async_response<ReturnType>::value) {
         return [fn = std::forward<Fn>(fn)](
                    const RawRequest& req, WireSender& sender) -> HandlerResult {
-          auto body = Deserializer::template Deserialize<T>(req.payload);
+          auto body = Deserialize<T, Deserializer>(req.payload);
           if (!body) {
             detail::Log<LogLevel::kWarning>("deserialization failed");
             sender(WireResponse{codes::kBadRequest});
@@ -134,7 +134,7 @@ class Router : public RouterBase {
         using BodyType = typename ReturnType::BodyType;
         return [fn = std::forward<Fn>(fn)](
                    const RawRequest& req, WireSender& sender) -> HandlerResult {
-          auto body = Deserializer::template Deserialize<T>(req.payload);
+          auto body = Deserialize<T, Deserializer>(req.payload);
           if (!body) {
             detail::Log<LogLevel::kWarning>("deserialization failed");
             sender(WireResponse{codes::kBadRequest});

@@ -10,6 +10,8 @@
 
 #include "coap_pp/util/span.hpp"
 
+#include "wire.hpp"
+
 namespace coap_pp {
 
 // Internal helpers for RFC 7252 §3.1 option delta/length nibble encoding.
@@ -29,16 +31,17 @@ namespace coap_pp {
 [[nodiscard]] inline bool EncodeExtField(uint32_t value,
                                          span<std::byte> out,
                                          std::size_t& pos, uint8_t& nibble) {
-  if (value <= 12u) {
+  if (value <= wire::kOptionNibbleMaxDirect) {
     nibble = static_cast<uint8_t>(value);
     return true;
   }
-  if (value <= 268u) {
-    nibble = 13u;
-    return WriteByte(out, pos, static_cast<uint8_t>(value - 13u));
+  if (value <= wire::kOptionExt8Max) {
+    nibble = wire::kOptionNibbleExt8;
+    return WriteByte(out, pos,
+                     static_cast<uint8_t>(value - wire::kOptionExt8Bias));
   }
-  nibble = 14u;
-  const uint16_t v = static_cast<uint16_t>(value - 269u);
+  nibble = wire::kOptionNibbleExt16;
+  const uint16_t v = static_cast<uint16_t>(value - wire::kOptionExt16Bias);
   return WriteByte(out, pos, static_cast<uint8_t>(v >> 8u)) &&
          WriteByte(out, pos, static_cast<uint8_t>(v & 0xFFu));
 }
@@ -49,21 +52,22 @@ namespace coap_pp {
 [[nodiscard]] inline bool ScanExtField(uint8_t nibble,
                                        span<const std::byte> raw,
                                        std::size_t& pos, uint32_t& value) {
-  if (nibble <= 12u) {
+  if (nibble <= wire::kOptionNibbleMaxDirect) {
     value = nibble;
     return true;
   }
-  if (nibble == 13u) {
+  if (nibble == wire::kOptionNibbleExt8) {
     if (pos >= raw.size()) return false;
-    value = static_cast<uint32_t>(static_cast<uint8_t>(raw[pos])) + 13u;
+    value = static_cast<uint32_t>(static_cast<uint8_t>(raw[pos])) +
+            wire::kOptionExt8Bias;
     ++pos;
     return true;
   }
-  // nibble == 14u
+  // nibble == wire::kOptionNibbleExt16
   if (pos + 2u > raw.size()) return false;
   value = ((static_cast<uint32_t>(static_cast<uint8_t>(raw[pos])) << 8u) |
            static_cast<uint32_t>(static_cast<uint8_t>(raw[pos + 1u]))) +
-          269u;
+          wire::kOptionExt16Bias;
   pos += 2u;
   return true;
 }

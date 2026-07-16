@@ -246,12 +246,91 @@ TEST_F(MessengerTest, OnReceive_DispatchesToHandler) {
 }
 
 TEST_F(MessengerTest, OnReceive_MalformedDatagram_SilentlyDiscarded) {
-  // 3 bytes — too short to be a valid CoAP message.
+  // 3 bytes — too short to even carry a fixed header; no RST can be matched.
   const auto bad =
       std::array{std::byte{0x40}, std::byte{0x01}, std::byte{0x00}};
   transport_.Inject(Endpoint{}, bad);
 
   EXPECT_EQ(handler_.message_count_, 0);
+  EXPECT_EQ(transport_.sends_.size(), 0u);
+}
+
+// ── Ping / rejection tests
+// ────────────────────────────────────────────────────
+
+TEST_F(MessengerTest, ReceiveEmptyCON_PingAnsweredWithRst) {
+  // RFC 7252 §4.3 "CoAP ping": an empty CON must be answered with a matching
+  // RST and must not reach the handler.
+  MessageBuilder<0> b;
+  b.SetType(MessageType::kCon).SetCode(codes::kEmpty).SetMessageId(0x1234u);
+  std::array<std::byte, 8> buf{};
+  std::size_t written = 0u;
+  (void)Serialize(b.Build(), buf, written);
+
+  transport_.Inject(Endpoint{}, span<const std::byte>{buf.data(), written});
+
+  EXPECT_EQ(handler_.message_count_, 0);
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const Message rst = transport_.DeserializeFirstResponse();
+  EXPECT_EQ(rst.type, MessageType::kRst);
+  EXPECT_EQ(rst.code, codes::kEmpty);
+  EXPECT_EQ(rst.message_id, 0x1234u);
+  EXPECT_EQ(rst.token.length, 0u);
+}
+
+TEST_F(MessengerTest, OnReceive_MalformedCON_RejectedWithRst) {
+  // Intact fixed header (ver 1, CON, GET, MID 0xABCD) followed by an invalid
+  // option byte (delta nibble 15 is reserved) — RFC 7252 §4.2 requires a
+  // matching RST.
+  const auto bad = std::array{std::byte{0x40}, std::byte{0x01},
+                              std::byte{0xAB}, std::byte{0xCD},
+                              std::byte{0xF0}};
+  transport_.Inject(Endpoint{}, bad);
+
+  EXPECT_EQ(handler_.message_count_, 0);
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const Message rst = transport_.DeserializeFirstResponse();
+  EXPECT_EQ(rst.type, MessageType::kRst);
+  EXPECT_EQ(rst.code, codes::kEmpty);
+  EXPECT_EQ(rst.message_id, 0xABCDu);
+}
+
+TEST_F(MessengerTest, OnReceive_TruncatedTokenCON_RejectedWithRst) {
+  // TKL = 4 but only 2 token bytes follow: full deserialization fails with
+  // kMessageTooShort, yet the fixed header is intact — must still be rejected
+  // with a matching RST, not silently dropped like a headerless runt datagram.
+  const auto bad = std::array{std::byte{0x44}, std::byte{0x01},
+                              std::byte{0x12}, std::byte{0x34},
+                              std::byte{0xAA}, std::byte{0xBB}};
+  transport_.Inject(Endpoint{}, bad);
+
+  EXPECT_EQ(handler_.message_count_, 0);
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const Message rst = transport_.DeserializeFirstResponse();
+  EXPECT_EQ(rst.type, MessageType::kRst);
+  EXPECT_EQ(rst.message_id, 0x1234u);
+}
+
+TEST_F(MessengerTest, OnReceive_MalformedNON_SilentlyDiscarded) {
+  // Same malformed options but type NON (0x50) — rejected silently, no RST.
+  const auto bad = std::array{std::byte{0x50}, std::byte{0x01},
+                              std::byte{0xAB}, std::byte{0xCD},
+                              std::byte{0xF0}};
+  transport_.Inject(Endpoint{}, bad);
+
+  EXPECT_EQ(handler_.message_count_, 0);
+  EXPECT_EQ(transport_.sends_.size(), 0u);
+}
+
+TEST_F(MessengerTest, OnReceive_UnknownVersionCON_SilentlyDiscarded) {
+  // Version 2 (0x80) — RFC 7252 §4.1: messages with an unknown version number
+  // MUST be silently ignored, even when confirmable.
+  const auto bad = std::array{std::byte{0x80}, std::byte{0x01},
+                              std::byte{0x00}, std::byte{0x01}};
+  transport_.Inject(Endpoint{}, bad);
+
+  EXPECT_EQ(handler_.message_count_, 0);
+  EXPECT_EQ(transport_.sends_.size(), 0u);
 }
 
 TEST_F(MessengerTest, TransportSetReceiverCalledInConstructor) {

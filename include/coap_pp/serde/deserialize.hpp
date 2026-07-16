@@ -23,8 +23,7 @@ concept TDeserializer = requires(span<const std::byte> payload) {
 template <typename T, typename Deserializer>
 // TODO: Re-add when C++20 is fully supported
 //  requires TDeserializer<Deserializer, T>
-std::optional<T> Deserialize(span<const std::byte> payload,
-                             const Deserializer&) {
+std::optional<T> Deserialize(span<const std::byte> payload) {
   return Deserializer::template Deserialize<T>(payload);
 }
 

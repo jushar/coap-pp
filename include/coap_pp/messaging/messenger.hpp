@@ -42,7 +42,9 @@ class MessageHandlerIF {
 };
 
 // Ties a TransportIF to CoAP deserialize/dispatch and RFC 7252 §4.2 CON
-// retransmission.
+// retransmission. Message-layer signaling is handled here before dispatch:
+// CoAP pings (empty CON, §4.3) are answered with a matching RST, and
+// malformed CON messages with an intact fixed header are rejected with RST.
 //
 // Usage:
 //   MemoryPool<Messenger::PendingSlot, 4> pool;
@@ -102,6 +104,9 @@ class Messenger : private TransportReceiverIF {
   // Message IDs are only unique per endpoint pair, so the sender must match
   // the slot's destination.
   void AckPending(const Endpoint& sender, uint16_t message_id);
+
+  // Send an empty RST matching message_id (rejects a CON, RFC 7252 §4.2).
+  void SendRst(const Endpoint& to, uint16_t message_id);
 
   TransportIF& transport_;
   MessageHandlerIF* handler_{nullptr};

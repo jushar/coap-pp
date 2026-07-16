@@ -122,6 +122,15 @@ void Messenger::OnReceive(const Endpoint& sender,
   if (Deserialize(data, msg) != DeserializeError::kOk) {
     detail::Log<LogLevel::kDebug>("discarding malformed datagram (%zu bytes)",
                                   data.size());
+    // §4.2: reject a malformed CON with a matching RST so the sender stops
+    // retransmitting. This needs an intact 4-byte fixed header of a known
+    // version (§4.1: unknown versions are silently ignored); anything else —
+    // including malformed NON/ACK/RST — is dropped silently (§4.3).
+    FixedHeader hdr{};
+    if (DeserializeFixedHeader(data, hdr) == DeserializeError::kOk &&
+        hdr.type == MessageType::kCon) {
+      SendRst(sender, hdr.message_id);
+    }
     return;
   }
 
@@ -129,7 +138,27 @@ void Messenger::OnReceive(const Endpoint& sender,
     AckPending(sender, msg.message_id);
   }
 
+  // §4.3 "CoAP ping": an empty CON is answered with a matching RST. It is a
+  // message-layer liveness check and is not dispatched to the handler.
+  if (msg.type == MessageType::kCon && msg.code == codes::kEmpty) {
+    SendRst(sender, msg.message_id);
+    return;
+  }
+
   if (handler_) handler_->OnMessage(sender, msg);
+}
+
+void Messenger::SendRst(const Endpoint& to, uint16_t message_id) {
+  const OutgoingMessage rst{MessageType::kRst, codes::kEmpty, message_id,
+                            Token{}, {}, {}};
+  std::size_t written = 0u;
+  if (Serialize(rst, tx_scratch_, written) != SerializeError::kOk ||
+      transport_.Send(to, span<const std::byte>{tx_scratch_.data(),
+                                                written}) !=
+          TransportError::kOk) {
+    detail::Log<LogLevel::kWarning>("failed to send RST for MID %u",
+                                    message_id);
+  }
 }
 
 void Messenger::AckPending(const Endpoint& sender, uint16_t message_id) {

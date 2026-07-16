@@ -128,7 +128,30 @@ TEST_F(ServerTest, Dispatch_WrongMethod_Returns405_WithoutCallingHandler) {
   EXPECT_EQ(resp.code, codes::kMethodNotAllowed);
 }
 
-TEST_F(ServerTest, Dispatch_EmptyCode_Ignored) {
+TEST_F(ServerTest, Dispatch_EmptyCON_AnsweredWithRstNotRouted) {
+  bool handler_called = false;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/res", [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          handler_called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  // Code 0.00 CON = CoAP ping — the messenger answers with RST (RFC 7252
+  // §4.3); no route lookup happens.
+  InjectRequest(MessageType::kCon, codes::kEmpty, 0x0001u, "/res");
+
+  EXPECT_FALSE(handler_called);
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const auto rst = transport_.DeserializeFirstResponse();
+  EXPECT_EQ(rst.type, MessageType::kRst);
+  EXPECT_EQ(rst.code, codes::kEmpty);
+  EXPECT_EQ(rst.message_id, 0x0001u);
+}
+
+TEST_F(ServerTest, Dispatch_EmptyNON_Ignored) {
   const std::array<Route, 1> routes{
       {{codes::kGet, "/res", [](const RawRequest&, WireSender& s) -> HandlerResult {
           s(WireResponse{codes::kContent});
@@ -137,9 +160,9 @@ TEST_F(ServerTest, Dispatch_EmptyCode_Ignored) {
   RouterBase router{"", routes};
   server_.AddRouter(router);
 
-  // Code 0.00 = Empty (ping/ACK) — must be silently dropped before route
-  // lookup.
-  InjectRequest(MessageType::kCon, codes::kEmpty, 0x0001u, "/res");
+  // An empty NON is a format error that is silently ignored (§4.3) — must be
+  // dropped before route lookup.
+  InjectRequest(MessageType::kNon, codes::kEmpty, 0x0001u, "/res");
 
   EXPECT_EQ(transport_.sends_.size(), 0u);
 }

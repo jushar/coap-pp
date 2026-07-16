@@ -8,6 +8,7 @@
 
 #include "coap_pp/util/overloaded.hpp"
 #include "option_field.hpp"
+#include "wire.hpp"
 
 namespace coap_pp {
 namespace {
@@ -30,9 +31,11 @@ SerializeError Serialize(const OutgoingMessage& msg, span<std::byte> out,
 
   // Fixed header
   const uint8_t tkl = msg.token.length;
-  const uint8_t type_bits = static_cast<uint8_t>(msg.type) & 0x03u;
+  const uint8_t type_bits = static_cast<uint8_t>(msg.type) & wire::kTypeMask;
   if (!WriteByte(out, pos,
-                 static_cast<uint8_t>(0x40u | (type_bits << 4u) | tkl)) ||
+                 static_cast<uint8_t>(
+                     (wire::kVersion << wire::kVersionShift) |
+                     (type_bits << wire::kTypeShift) | tkl)) ||
       !WriteByte(out, pos, msg.code.value) ||
       !WriteByte(out, pos, static_cast<uint8_t>(msg.message_id >> 8u)) ||
       !WriteByte(out, pos, static_cast<uint8_t>(msg.message_id & 0xFFu))) {
@@ -79,8 +82,8 @@ SerializeError Serialize(const OutgoingMessage& msg, span<std::byte> out,
     }
 
     // Write header byte now that both nibbles are known
-    out[header_pos] =
-        static_cast<std::byte>((delta_nibble << 4u) | length_nibble);
+    out[header_pos] = static_cast<std::byte>(
+        (delta_nibble << wire::kOptionDeltaShift) | length_nibble);
 
     // Write value bytes
     const bool write_ok = std::visit(
@@ -122,7 +125,7 @@ SerializeError Serialize(const OutgoingMessage& msg, span<std::byte> out,
 
   // Payload marker + payload
   if (msg.serialize_payload) {
-    if (!WriteByte(out, pos, 0xFFu)) {
+    if (!WriteByte(out, pos, wire::kPayloadMarker)) {
       return SerializeError::kBufferTooSmall;
     }
 
