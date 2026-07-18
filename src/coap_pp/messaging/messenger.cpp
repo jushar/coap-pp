@@ -109,7 +109,7 @@ void Messenger::Tick(uint32_t elapsed_ms) {
       case RetransmitState::Action::kGiveUp:
         detail::Log<LogLevel::kWarning>(
             "CON MID %u timed out after max retransmits", slot.message_id);
-        if (handler_) handler_->OnConTimeout(slot.message_id);
+        if (handler_) handler_->OnConTimeout(slot.destination, slot.message_id);
         return true;
     }
     return false;
@@ -149,6 +149,10 @@ void Messenger::OnReceive(const Endpoint& sender,
 
   if (msg.type == MessageType::kAck || msg.type == MessageType::kRst) {
     AckPending(sender, msg.message_id);
+  }
+  if (msg.type == MessageType::kRst) {
+    if (handler_) handler_->OnRst(sender, msg.message_id);
+    return;
   }
 
   // §4.3 "CoAP ping": an empty CON is answered with a matching RST. It is a

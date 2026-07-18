@@ -8,6 +8,7 @@ A C++17 implementation of the CoAP protocol ([RFC 7252](https://www.rfc-editor.o
 - CoAP messaging (reliable/unreliable messages, request/response, retransmission)
 - CoAP server, with semi-dynamic registration of endpoints
 - Async responses
+- Resource observation, server side ([RFC 7641](https://www.rfc-editor.org/rfc/rfc7641))
 
 **Goals:**
 - No heap allocations — all buffers are statically sized or provided via `MemoryPool`
@@ -314,6 +315,43 @@ auto HandleSlow(const RawRequest& req) {
     return async;
 }
 ```
+
+## Observing resources (RFC 7641, server side)
+
+A resource becomes observable by pairing its GET route with an application-owned `Observable`. `HandleGet()` processes the request's Observe option (registration, re-registration, deregistration) and, for registrations, adds the Observe option to the response so it doubles as the initial notification. `Notify()` pushes a new representation to every registered observer:
+
+```cpp
+#include "coap_pp/server/observable.hpp"
+
+Observable<4> observable{server};  // up to 4 concurrent observers
+
+const std::array<Route, 1> routes{{
+    {codes::kGet, "/counter", RawRouter::Bind([&](const RawRequest& req) {
+       Response resp{codes::kContent, CounterPayload(),
+                     ContentFormat::kTextPlain};
+       observable.HandleGet(req, resp.options);
+       return resp;
+     })},
+}};
+
+// Whenever the resource state changes:
+observable.Notify(Response{codes::kContent, CounterPayload(),
+                           ContentFormat::kTextPlain});
+
+// When the resource disappears:
+observable.CancelAll(codes::kNotFound);
+```
+
+Like `AsyncResponse`, `Observable<MaxObservers, Serializer>` takes an optional serializer type so `Notify()` accepts typed payloads (e.g. `Observable<4, NanopbSerializer>`).
+
+Behaviour details:
+
+- Notifications are sent non-confirmable by default; every Nth notification per observer (CMake `COAP_PP_OBSERVE_CON_EVERY`, default 24) is sent confirmable so dead observers are detected. `Notify()` also takes an explicit `NotifyType::kCon`/`kNon` override. RFC 7641 §4.5's wall-clock rule (a CON at least every 24 h) is the application's responsibility, since the library has no time source.
+- Observers are removed when they deregister (Observe=1), reject a notification with RST, or let a confirmable notification time out. A non-2.xx `Notify()`/`CancelAll()` code is sent without an Observe option and ends all observations (§4.2).
+- When the observer list is full, registrations are silently ignored and the request is served as a plain GET (allowed by §4.1).
+- Not implemented: NSTART/RTT congestion control (§4.5.1), updating the Observe value of an already-queued CON retransmission (§4.4), proactive Max-Age refresh (§4.3.1), ETag validation with 2.03 notifications (§4.3.2), transmission superseding (§4.5.2).
+
+See [examples/raw/raw.cpp](examples/raw/raw.cpp) for a complete working example (`GET /counter`).
 
 ## Integrating via CMake FetchContent
 

@@ -18,7 +18,7 @@ struct RecordedSend {
   std::size_t size{0};
 };
 
-inline constexpr std::size_t kMaxRecordedSends = 16;
+inline constexpr std::size_t kMaxRecordedSends = 32;
 
 class FakeTransport : public TransportIF {
  public:

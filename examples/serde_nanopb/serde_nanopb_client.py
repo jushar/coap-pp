@@ -47,6 +47,35 @@ async def post_pb(ctx, path, request_msg, response_type=None):
         print(f"{resp.code}  {body!r}")
 
 
+async def observe_counter_pb(ctx, notification_count=2):
+    """Observe /counter-pb (RFC 7641): the registration response doubles as
+    the initial state; the server then notifies every 5 s with a protobuf
+    CounterValue payload when the counter increments."""
+
+    def counter_of(message):
+        value = serde_nanopb_pb2.CounterValue()
+        value.ParseFromString(message.payload)
+        return value.value
+
+    req = aiocoap.Message(code=aiocoap.GET, uri=f"{BASE_URI}/counter-pb",
+                          observe=0)
+    request = ctx.request(req)
+
+    resp = await request.response
+    print(f"GET /counter-pb  {resp.code}  observe={resp.opt.observe}  "
+          f"value={counter_of(resp)}")
+
+    received = 0
+    async for notification in request.observation:
+        print(f"  notification  {notification.code}  "
+              f"observe={notification.opt.observe}  "
+              f"value={counter_of(notification)}")
+        received += 1
+        if received >= notification_count:
+            request.observation.cancel()
+            break
+
+
 async def main():
     ctx = await aiocoap.Context.create_client_context()
 
@@ -57,6 +86,9 @@ async def main():
     await get(ctx, "/other")                                                  # 4.04 Not Found
     await post_pb(ctx, "/hello-world-pb", hello_req, serde_nanopb_pb2.HelloResponse)  # 2.05 HelloResponse
     await post_pb(ctx, "/hello-lambda-pb", hello_req, serde_nanopb_pb2.HelloResponse) # 2.05 HelloResponse
+
+    print("observing /counter-pb (one notification every ~5 s) ...")
+    await observe_counter_pb(ctx)                                             # 2.05 initial + notifications
 
     await ctx.shutdown()
 

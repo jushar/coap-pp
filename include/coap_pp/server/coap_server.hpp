@@ -10,6 +10,7 @@
 
 #include "coap_pp/messaging/messenger.hpp"
 #include "coap_pp/server/router_base.hpp"
+#include "coap_pp/util/intrusive_list.hpp"
 #include "coap_pp/util/ring_buffer.hpp"
 #include "coap_pp/util/span.hpp"
 
@@ -22,6 +23,8 @@ namespace coap_pp {
 #define COAP_PP_DUPLICATE_CACHE_SIZE 8
 #endif
 inline constexpr std::size_t kDuplicateCacheSize = COAP_PP_DUPLICATE_CACHE_SIZE;
+
+class ObservableBase;
 
 // High-level CoAP server: dispatches incoming requests to registered Router
 // objects.
@@ -58,14 +61,24 @@ class CoapServer : private MessageHandlerIF {
  private:
   // MessageHandlerIF
   void OnMessage(const Endpoint& sender, const Message& msg) override;
-  void OnConTimeout(uint16_t /*message_id*/) override {}
+  // RFC 7641 §4.5: a rejected or timed-out notification removes the observer.
+  void OnConTimeout(const Endpoint& destination, uint16_t message_id) override;
+  void OnRst(const Endpoint& sender, uint16_t message_id) override;
 
-  // Called by AsyncResponse::Send() to deliver a deferred reply.
+  // Called by AsyncResponse::Send() to deliver a deferred reply and by
+  // ObservableBase::Notify() to deliver notifications.
   // Originally-CON requests: reply is a new CON with a fresh MID.
   // Originally-NON requests: reply is a NON with a fresh MID.
-  void SendResponse(const Endpoint& to, MessageType req_type, uint16_t req_mid,
-                    const Token& token, bool is_piggybacked_ack,
-                    const WireResponse& resp);
+  // When observe_seq is non-null an Observe option with that value is added
+  // (RFC 7641 notification). Returns the message ID of the sent reply.
+  uint16_t SendResponse(const Endpoint& to, MessageType req_type,
+                        uint16_t req_mid, const Token& token,
+                        bool is_piggybacked_ack, const WireResponse& resp,
+                        const uint32_t* observe_seq = nullptr);
+
+  // Intrusive list of Observables for RST / CON-timeout dispatch.
+  void RegisterObservable(ObservableBase& observable);
+  void UnregisterObservable(ObservableBase& observable);
 
   void SendEmptyAck(const Endpoint& to, uint16_t message_id);
 
@@ -82,11 +95,13 @@ class CoapServer : private MessageHandlerIF {
   bool IsDuplicate(const Endpoint& sender, uint16_t message_id) const;
 
   friend class AsyncResponseBase;
+  friend class ObservableBase;
 
   Messenger& messenger_;
   span<RouterBase*> routers_;
   std::size_t router_count_{0};
   uint16_t next_mid_{1u};
+  IntrusiveList<ObservableBase> observables_{};
   RingBuffer<SeenRequest, kDuplicateCacheSize> seen_requests_{};
 };
 

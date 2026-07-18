@@ -8,3 +8,7 @@ This project is a WIP implementation of the CoAP protocol in modern C++ (C++17).
 - Do not use the heap, but rely on memory pools if dynamic allocation is required
 - Do not use platform-dependant (e.g. WinAPI or POSIX) code in core components (only in interface implementations)
 - Use the convention `<name>IF` for interfaces
+
+## Principles & Guidelines
+
+- The library is pre-release. Therefore, breaking changes are explicitly allowed and architectural improvements are encouraged.

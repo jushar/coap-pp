@@ -7,14 +7,11 @@
 
 #include <type_traits>
 
-#include "coap_pp/content_formats.hpp"
 #include "coap_pp/log.hpp"
-#include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/serde/deserialize.hpp"
 #include "coap_pp/serde/serialize.hpp"
 #include "coap_pp/server/resource.hpp"
 #include "coap_pp/server/router_base.hpp"
-#include "coap_pp/util/span.hpp"
 #include "coap_pp/util/type_traits.hpp"
 
 namespace coap_pp {
@@ -108,7 +105,7 @@ class Router : public RouterBase {
         return [fn = std::forward<Fn>(fn)](
                    const RawRequest& req, WireSender& sender) -> HandlerResult {
           auto response = fn(req);
-          sender(MakeWireResponse<BodyType>(response));
+          sender(detail::MakeWireResponse<Serializer>(response));
           return HandlerResult::kSync;
         };
       }
@@ -131,7 +128,6 @@ class Router : public RouterBase {
           return HandlerResult::kAsync;
         };
       } else {
-        using BodyType = typename ReturnType::BodyType;
         return [fn = std::forward<Fn>(fn)](
                    const RawRequest& req, WireSender& sender) -> HandlerResult {
           auto body = Deserialize<T, Deserializer>(req.payload);
@@ -141,34 +137,10 @@ class Router : public RouterBase {
             return HandlerResult::kSync;
           }
           auto response = fn(Request<T>{req, std::move(*body)});
-          sender(MakeWireResponse<BodyType>(response));
+          sender(detail::MakeWireResponse<Serializer>(response));
           return HandlerResult::kSync;
         };
       }
-    }
-  }
-
-  // Build a WireResponse from a Response<BodyType> using a reference-based
-  // serialize callback. The callback holds a reference to response.payload;
-  // this is safe because sender() is called synchronously before response goes
-  // out of scope in the BindImpl wrapper above.
-  template <typename BodyType, typename ResponseT>
-  static WireResponse MakeWireResponse(ResponseT& response) {
-    if constexpr (std::is_same_v<BodyType, span<const std::byte>>) {
-      return WireResponse{response.code,
-                          response.payload.empty()
-                              ? SerializePayloadCallback{}
-                              : RawBytesSerializeCallback(response.payload),
-                          response.content_format, response.options};
-    } else {
-      const ContentFormat cf =
-          (response.content_format != ContentFormat::kNoContentFormat)
-              ? response.content_format
-              : Serializer::kContentFormat;
-      return WireResponse{
-          response.code,
-          SerializerSerializeCallback<Serializer>(response.payload), cf,
-          response.options};
     }
   }
 };

@@ -34,10 +34,19 @@ class MessageHandlerIF {
   // Called for every successfully deserialized incoming message.
   // msg is only valid for the duration of this call (views into the transport
   // buffer).
+  // RST messages are handled separately by OnRst.
   virtual void OnMessage(const Endpoint& sender, const Message& msg) = 0;
 
-  // Called when a CON we sent is never acknowledged after MAX_RETRANSMIT.
-  virtual void OnConTimeout([[maybe_unused]] uint16_t message_id) {}
+  // Called when a CON we sent to destination is never acknowledged after
+  // MAX_RETRANSMIT.
+  virtual void OnConTimeout([[maybe_unused]] const Endpoint& destination,
+                            [[maybe_unused]] uint16_t message_id) {}
+
+  // Called for every valid incoming RST. The matching pending CON (if any) has
+  // already been cancelled. Needed e.g. for RFC 7641 §4.5: a client rejecting
+  // a notification with RST must be removed from the observer list.
+  virtual void OnRst([[maybe_unused]] const Endpoint& sender,
+                     [[maybe_unused]] uint16_t message_id) {}
 };
 
 // Ties a TransportIF to CoAP deserialize/dispatch and RFC 7252 §4.2 CON

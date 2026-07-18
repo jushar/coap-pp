@@ -33,15 +33,26 @@ class MockHandler : public MessageHandlerIF {
     ++message_count_;
   }
 
-  void OnConTimeout(uint16_t message_id) override {
+  void OnConTimeout(const Endpoint& destination, uint16_t message_id) override {
+    last_timeout_endpoint_ = destination;
     last_timeout_mid_ = message_id;
     ++timeout_count_;
   }
 
+  void OnRst(const Endpoint& sender, uint16_t message_id) override {
+    last_rst_endpoint_ = sender;
+    last_rst_mid_ = message_id;
+    ++rst_count_;
+  }
+
   ReceivedMessage last_{};
   int message_count_{0};
+  Endpoint last_timeout_endpoint_{};
   uint16_t last_timeout_mid_{0};
   int timeout_count_{0};
+  Endpoint last_rst_endpoint_{};
+  uint16_t last_rst_mid_{0};
+  int rst_count_{0};
 };
 
 // ── Fixture
@@ -394,6 +405,49 @@ TEST_F(MessengerTest, ReceiveRST_WithNonEmptyCode_IgnoredAndKeepsPendingSlot) {
   EXPECT_EQ(handler_.message_count_, 0);
   EXPECT_EQ(static_cast<MemoryPoolSpan<Messenger::PendingSlot>>(pool_).size(),
             1u);
+}
+
+TEST_F(MessengerTest, ReceiveRST_ReportedViaOnRst_NotViaOnMessage) {
+  Endpoint peer{};
+  peer.storage[0] = std::byte{0xCC};
+
+  const auto [rst, rst_len] = MakeRstBytes(0x0031u);
+  transport_.Inject(peer, span<const std::byte>{rst.data(), rst_len});
+
+  EXPECT_EQ(handler_.rst_count_, 1);
+  EXPECT_EQ(handler_.last_rst_mid_, 0x0031u);
+  EXPECT_EQ(handler_.last_rst_endpoint_, peer);
+  EXPECT_EQ(handler_.message_count_, 0);
+}
+
+TEST_F(MessengerTest, ReceiveRST_WithNonEmptyCode_NoOnRstCallback) {
+  // A non-empty RST is invalid (§4.2) and must be ignored entirely.
+  MessageBuilder<0> b;
+  b.SetType(MessageType::kRst).SetCode(codes::kContent).SetMessageId(0x0032u);
+  std::array<std::byte, 8> buf{};
+  std::size_t written = 0u;
+  (void)Serialize(b.Build(), buf, written);
+  transport_.Inject(Endpoint{}, span<const std::byte>{buf.data(), written});
+
+  EXPECT_EQ(handler_.rst_count_, 0);
+}
+
+TEST_F(MessengerTest, Tick_MaxRetransmit_ReportsDestinationEndpoint) {
+  Endpoint peer{};
+  peer.storage[0] = std::byte{0xDD};
+
+  MessageBuilder<0> b;
+  b.SetType(MessageType::kCon).SetCode(codes::kGet).SetMessageId(0x0008u);
+  ASSERT_EQ(messenger_.Send(peer, b.Build()), MessengerError::kOk);
+
+  messenger_.Tick(2000u);
+  messenger_.Tick(4000u);
+  messenger_.Tick(8000u);
+  messenger_.Tick(16000u);
+  messenger_.Tick(32000u);
+
+  EXPECT_EQ(handler_.timeout_count_, 1);
+  EXPECT_EQ(handler_.last_timeout_endpoint_, peer);
 }
 
 TEST_F(MessengerTest, ReceiveEmptyNON_SilentlyDiscarded) {

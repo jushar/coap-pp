@@ -13,6 +13,7 @@
 #include "coap_pp/option_number.hpp"
 #include "coap_pp/panic.hpp"
 #include "coap_pp/pdu/builder.hpp"
+#include "coap_pp/server/observable.hpp"
 #include "coap_pp/server/resource.hpp"
 
 namespace coap_pp {
@@ -170,12 +171,14 @@ void CoapServer::SendEmptyAck(const Endpoint& to, uint16_t message_id) {
   }
 }
 
-void CoapServer::SendResponse(const Endpoint& to, MessageType req_type,
-                              uint16_t req_mid, const Token& token,
-                              bool as_piggybacked_ack,
-                              const WireResponse& resp) {
-  // Capacity: Content-Format + up to kMaxResponseOptions handler options.
-  MessageBuilder<1 + kMaxResponseOptions> builder;
+uint16_t CoapServer::SendResponse(const Endpoint& to, MessageType req_type,
+                                  uint16_t req_mid, const Token& token,
+                                  bool as_piggybacked_ack,
+                                  const WireResponse& resp,
+                                  const uint32_t* observe_seq) {
+  // Capacity: Observe + Content-Format + up to kMaxResponseOptions handler
+  // options.
+  MessageBuilder<2 + kMaxResponseOptions> builder;
   // Originally-CON: empty ACK was already sent; deferred reply is a new CON.
   // Originally-NON: send NON with new MID.
   const bool was_con = (req_type == MessageType::kCon);
@@ -183,12 +186,15 @@ void CoapServer::SendResponse(const Endpoint& to, MessageType req_type,
   const MessageType out_type =
       was_con ? (as_piggybacked_ack ? MessageType::kAck : MessageType::kCon)
               : MessageType::kNon;
-  builder.SetType(out_type)
-      .SetCode(resp.code)
-      .SetMessageId(was_con && as_piggybacked_ack ? req_mid : next_mid_++)
-      .SetToken(token);
+  const uint16_t mid = was_con && as_piggybacked_ack ? req_mid : next_mid_++;
+  builder.SetType(out_type).SetCode(resp.code).SetMessageId(mid).SetToken(
+      token);
+  if (observe_seq != nullptr) {
+    builder.AddOption(OptionNumber::kObserve, *observe_seq);
+  }
   if (resp.content_format != ContentFormat::kNoContentFormat) {
-    builder.AddOption(OptionNumber::kContentFormat, static_cast<uint32_t>(resp.content_format.Value()));
+    builder.AddOption(OptionNumber::kContentFormat,
+                      static_cast<uint32_t>(resp.content_format.Value()));
   }
   for (const auto& opt : resp.options) {
     builder.AddOption(opt);
@@ -197,9 +203,30 @@ void CoapServer::SendResponse(const Endpoint& to, MessageType req_type,
     builder.SetSerializePayloadCallback(resp.serialize_payload);
   }
   if (messenger_.Send(to, builder.Build()) != MessengerError::kOk) {
-    detail::Log<LogLevel::kWarning>("failed to send async response for MID %u",
-                                    req_mid);
+    detail::Log<LogLevel::kWarning>("failed to send response with MID %u", mid);
   }
+  return mid;
+}
+
+void CoapServer::OnConTimeout(const Endpoint& destination,
+                              uint16_t message_id) {
+  for (ObservableBase& observable : observables_) {
+    observable.RemoveByMid(destination, message_id);
+  }
+}
+
+void CoapServer::OnRst(const Endpoint& sender, uint16_t message_id) {
+  for (ObservableBase& observable : observables_) {
+    observable.RemoveByMid(sender, message_id);
+  }
+}
+
+void CoapServer::RegisterObservable(ObservableBase& observable) {
+  observables_.PushFront(observable);
+}
+
+void CoapServer::UnregisterObservable(ObservableBase& observable) {
+  observables_.Remove(observable);
 }
 
 }  // namespace coap_pp

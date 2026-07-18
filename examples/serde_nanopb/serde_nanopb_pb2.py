@@ -13,15 +13,17 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11hello_world.proto\"\x1c\n\x0cHelloRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"!\n\rHelloResponse\x12\x10\n\x08greeting\x18\x01 \x01(\tb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12serde_nanopb.proto\"\x1c\n\x0cHelloRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"!\n\rHelloResponse\x12\x10\n\x08greeting\x18\x01 \x01(\t\"\x1d\n\x0c\x43ounterValue\x12\r\n\x05value\x18\x01 \x01(\rb\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'serde_nanopb_pb2', globals())
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _HELLOREQUEST._serialized_start=21
-  _HELLOREQUEST._serialized_end=49
-  _HELLORESPONSE._serialized_start=51
-  _HELLORESPONSE._serialized_end=84
+  _HELLOREQUEST._serialized_start=22
+  _HELLOREQUEST._serialized_end=50
+  _HELLORESPONSE._serialized_start=52
+  _HELLORESPONSE._serialized_end=85
+  _COUNTERVALUE._serialized_start=87
+  _COUNTERVALUE._serialized_end=116
 # @@protoc_insertion_point(module_scope)

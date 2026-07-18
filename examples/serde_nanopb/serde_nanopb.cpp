@@ -11,6 +11,7 @@
 #include "coap_pp/log.hpp"
 #include "coap_pp/messaging/messenger.hpp"
 #include "coap_pp/server/coap_server.hpp"
+#include "coap_pp/server/observable.hpp"
 #include "coap_pp_serde_nanopb/router.hpp"
 #include "coap_pp_transport_posix/udp_transport.hpp"
 #include "serde_nanopb.coap_pp_fields.hpp"
@@ -98,6 +99,21 @@ int main() {
   ExampleController example_controller{};
   server.AddRouter(example_controller.BuildRouter());
 
+  // RFC 7641: /counter-pb can be observed (GET with Observe=0); observers
+  // receive a protobuf CounterValue notification whenever the value changes.
+  Observable<4, NanopbSerializer> counter_observable{server};
+  uint32_t counter = 0;
+  const std::array<Route, 1> counter_routes{{
+      {codes::kGet, "/counter-pb",
+       NanopbRouter::Bind([&](const RawRequest& req) {
+         Response resp{codes::kContent, demo_CounterValue{.value = counter}};
+         counter_observable.HandleGet(req, resp.options);
+         return resp;
+       })},
+  }};
+  NanopbRouter counter_router{"", counter_routes};
+  server.AddRouter(counter_router);
+
   if (transport.Start() != TransportError::kOk) {
     std::cerr << "Failed to start transport\n";
     return 1;
@@ -110,14 +126,24 @@ int main() {
       << "  POST /hello-world-pb -> 2.05 Content: With protobuf payload\n";
   std::cout << "  POST /hello  ->  4.05 Method Not Allowed\n";
   std::cout << "  GET  /other  ->  4.04 Not Found\n";
+  std::cout << "  GET  /counter-pb (observable, increments every 5 s)\n";
   std::cout << "Press Ctrl+C to stop.\n";
 
   // Run main loop
   std::signal(SIGINT, [](int) { g_running = false; });
 
+  uint32_t since_last_increment_ms = 0;
   while (g_running) {
     std::this_thread::sleep_for(100ms);
     messenger.Tick(100);
+
+    since_last_increment_ms += 100;
+    if (since_last_increment_ms >= 5000) {
+      since_last_increment_ms = 0;
+      ++counter;
+      counter_observable.Notify(
+          Response{codes::kContent, demo_CounterValue{.value = counter}});
+    }
   }
 
   std::cout << "\nShutting down.\n";

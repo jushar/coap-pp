@@ -5,9 +5,11 @@ add_executable(coap-pp-tests
     messaging/test_messenger.cpp
     pdu/test_pdu.cpp
     pdu/test_serialize.cpp
+    server/test_observe.cpp
     server/test_server.cpp
     transport/test_endpoint.cpp
     util/test_inplace_function.cpp
+    util/test_intrusive_list.cpp
     util/test_memory_pool.cpp
     util/test_panic.cpp
     util/test_ring_buffer.cpp

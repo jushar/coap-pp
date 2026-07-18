@@ -85,6 +85,33 @@ Response(Code, T, ContentFormat) -> Response<T>;
 template <typename T>
 Response(Code, T) -> Response<T>;
 
+namespace detail {
+
+// Builds the WireResponse for a Response<T>. Response<span<const std::byte>>
+// is passed through as raw bytes; any other payload type is serialized via
+// Serializer (falling back to Serializer::kContentFormat when the response
+// does not specify one). The returned WireResponse's serialize callback
+// references resp.payload — resp must stay alive until the message has been
+// serialized, which all (synchronous) send paths guarantee.
+template <typename Serializer, typename T>
+WireResponse MakeWireResponse(const Response<T>& resp) {
+  WireResponse wire{resp.code, {}, resp.content_format, resp.options};
+  if constexpr (std::is_same_v<T, span<const std::byte>>) {
+    if (!resp.payload.empty()) {
+      wire.serialize_payload = RawBytesSerializeCallback(resp.payload);
+    }
+  } else {
+    if (wire.content_format == ContentFormat::kNoContentFormat) {
+      wire.content_format = Serializer::kContentFormat;
+    }
+    wire.serialize_payload =
+        SerializerSerializeCallback<Serializer>(resp.payload);
+  }
+  return wire;
+}
+
+}  // namespace detail
+
 // ── AsyncResponseBase
 // ───────────────────────────────────────────────────────── Non-template base
 // for AsyncResponse<S>. Holds the routing data members and the SendWireResponse
@@ -144,19 +171,7 @@ class AsyncResponse : public AsyncResponseBase {
   // SendWireResponse is synchronous so resp outlives the callback invocation.
   template <typename T>
   void Send(const Response<T>& resp) {
-    WireResponse wire{resp.code, {}, resp.content_format, resp.options};
-    if constexpr (std::is_same_v<T, span<const std::byte>>) {
-      if (!resp.payload.empty()) {
-        wire.serialize_payload = RawBytesSerializeCallback(resp.payload);
-      }
-    } else {
-      if (wire.content_format == ContentFormat::kNoContentFormat) {
-        wire.content_format = Serializer::kContentFormat;
-      }
-      wire.serialize_payload =
-          SerializerSerializeCallback<Serializer>(resp.payload);
-    }
-    SendWireResponse(wire);
+    SendWireResponse(detail::MakeWireResponse<Serializer>(resp));
   }
 };
 
@@ -190,6 +205,7 @@ struct RawRequest {
   friend struct Request;  // Request<T> copies routing context from RawRequest
   template <typename, typename>
   friend class Router;  // Router<Ser, Deser>::Bind may need routing context
+  friend class ObservableBase;  // observer registration needs sender + token
 
   CoapServer* server_;
   Endpoint sender_;
@@ -219,6 +235,7 @@ struct Request {
  private:
   template <typename, typename>
   friend class Router;  // Router<Ser, Deser>::Bind constructs Request<T>
+  friend class ObservableBase;  // observer registration needs sender + token
 
   Request(const RawRequest& base, T body)
       : method(base.method),
