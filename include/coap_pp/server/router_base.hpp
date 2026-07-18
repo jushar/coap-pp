@@ -8,6 +8,7 @@
 #include <string_view>
 
 #include "coap_pp/server/resource.hpp"
+#include "coap_pp/util/intrusive_list.hpp"
 #include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
@@ -24,9 +25,10 @@ struct Route {
 };
 
 // Non-template base class for all Router<Serializer, Deserializer>
-// specialisations. CoapServer stores pointers to this type so that routers
-// with different serde configs can coexist in the same server.
-class RouterBase {
+// specialisations. CoapServer links routers into an IntrusiveList of this
+// type so that routers with different serde configs can coexist in the same
+// server; a router can therefore be mounted on at most one server at a time.
+class RouterBase : public IntrusiveListNode<RouterBase> {
  public:
   RouterBase(std::string_view base_path, span<const Route> routes)
       : base_path_{base_path}, routes_{routes} {}

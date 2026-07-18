@@ -11,7 +11,6 @@
 #include "coap_pp/content_formats.hpp"
 #include "coap_pp/log.hpp"
 #include "coap_pp/option_number.hpp"
-#include "coap_pp/panic.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/server/observable.hpp"
 #include "coap_pp/server/resource.hpp"
@@ -41,16 +40,12 @@ std::size_t JoinUriPath(const OptionsView& opts, char* buf,
 
 }  // namespace
 
-CoapServer::CoapServer(Messenger& messenger, span<RouterBase*> routers)
-    : messenger_{messenger}, routers_{routers} {
+CoapServer::CoapServer(Messenger& messenger) : messenger_{messenger} {
   messenger_.SetHandler(*this);
 }
 
 void CoapServer::AddRouter(RouterBase& router) {
-  if (router_count_ >= routers_.size()) {
-    detail::Panic("CoapServer router table full");
-  }
-  routers_[router_count_++] = &router;
+  routers_.PushFront(router);
 }
 
 void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
@@ -77,8 +72,7 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   // match yields 4.04.
   bool path_matched = false;
   const Route* found_route = nullptr;
-  for (std::size_t i = 0; i < router_count_; ++i) {
-    const RouterBase& router = *routers_[i];
+  for (const RouterBase& router : routers_) {
     const auto base = router.GetBasePath();
     if (request_path.size() < base.size() ||
         request_path.substr(0, base.size()) != base)

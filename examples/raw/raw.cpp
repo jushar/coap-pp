@@ -30,8 +30,7 @@ int main() {
   MemoryPool<Messenger::PendingSlot, 4> con_pool{};
   Messenger messenger{transport, con_pool};
 
-  std::array<RouterBase*, 4> router_storage{};
-  CoapServer server{messenger, router_storage};
+  CoapServer server{messenger};
 
   // RFC 7641: /counter can be observed (GET with Observe=0); every observer
   // is notified when the value changes.

@@ -42,8 +42,7 @@ int main() {
   MemoryPool<Messenger::PendingSlot, 4> con_pool{};
   Messenger messenger{transport, con_pool};
 
-  std::array<RouterBase*, 4> router_storage{};
-  CoapServer server{messenger, router_storage};
+  CoapServer server{messenger};
 
   const std::array<Route, 1> routes{{
       {codes::kPost, "/greet",

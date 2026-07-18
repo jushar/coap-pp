@@ -92,8 +92,7 @@ int main() {
   Messenger messenger{transport, con_pool};
 
   // Server
-  std::array<RouterBase*, 4> router_storage{};
-  CoapServer server{messenger, router_storage};
+  CoapServer server{messenger};
 
   // REST controllers
   ExampleController example_controller{};

@@ -92,8 +92,7 @@ int main() {
     Messenger messenger{transport, con_pool};
 
     // 3. Server
-    std::array<RouterBase*, 4> router_storage{};
-    CoapServer server{messenger, router_storage};
+    CoapServer server{messenger};
 
     // 4. Routes
     static const std::array<Route, 1> kRoutes{{{

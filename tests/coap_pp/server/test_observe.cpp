@@ -48,8 +48,7 @@ class ObserveTest : public ::testing::Test {
   MemoryPool<Messenger::PendingSlot, 4> pool_{};
   Messenger messenger_{transport_, pool_};
 
-  std::array<RouterBase*, 4> router_storage_{};
-  CoapServer server_{messenger_, router_storage_};
+  CoapServer server_{messenger_};
   Observable<kMaxObservers> observable_{server_};
 
   std::array<Route, 1> routes_{{{codes::kGet, "/obs",

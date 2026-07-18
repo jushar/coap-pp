@@ -25,8 +25,7 @@ class ServerTest : public ::testing::Test {
   MemoryPool<Messenger::PendingSlot, 4> pool_{};
   Messenger messenger_{transport_, pool_};
 
-  std::array<RouterBase*, 8> router_storage_{};
-  CoapServer server_{messenger_, router_storage_};
+  CoapServer server_{messenger_};
 
   void InjectRequest(MessageType type, Code method, uint16_t mid,
                      std::string_view path, span<const std::byte> payload = {},

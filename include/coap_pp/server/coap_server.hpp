@@ -12,7 +12,6 @@
 #include "coap_pp/server/router_base.hpp"
 #include "coap_pp/util/intrusive_list.hpp"
 #include "coap_pp/util/ring_buffer.hpp"
-#include "coap_pp/util/span.hpp"
 
 namespace coap_pp {
 
@@ -30,8 +29,7 @@ class ObservableBase;
 // objects.
 //
 // Usage:
-//   std::array<RouterBase*, 4> router_storage{};
-//   CoapServer server{messenger, router_storage};
+//   CoapServer server{messenger};
 //
 //   using MyRouter = Router<NanopbDeserializer>;
 //   static const std::array<Route, 1> kRoutes = {{{codes::kPost, "/data",
@@ -51,11 +49,11 @@ class ObservableBase;
 class CoapServer : private MessageHandlerIF {
  public:
   // Calls messenger.SetHandler(*this) immediately.
-  // routers is caller-provided storage for RouterBase pointers.
-  CoapServer(Messenger& messenger, span<RouterBase*> routers);
+  explicit CoapServer(Messenger& messenger);
 
-  // Mount a router. Panics when the routers span is full (a misconfigured
-  // router table is a programming error).
+  // Mount a router. The order in which routers are searched for a matching
+  // route is unspecified; a router must not be mounted on more than one
+  // server.
   void AddRouter(RouterBase& router);
 
  private:
@@ -98,8 +96,7 @@ class CoapServer : private MessageHandlerIF {
   friend class ObservableBase;
 
   Messenger& messenger_;
-  span<RouterBase*> routers_;
-  std::size_t router_count_{0};
+  IntrusiveList<RouterBase> routers_{};
   uint16_t next_mid_{1u};
   IntrusiveList<ObservableBase> observables_{};
   RingBuffer<SeenRequest, kDuplicateCacheSize> seen_requests_{};
