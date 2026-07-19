@@ -3,8 +3,10 @@
 
 add_executable(coap-pp-tests
     messaging/test_messenger.cpp
+    pdu/test_block.cpp
     pdu/test_pdu.cpp
     pdu/test_serialize.cpp
+    server/test_blockwise.cpp
     server/test_observe.cpp
     server/test_server.cpp
     transport/test_endpoint.cpp

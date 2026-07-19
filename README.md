@@ -9,6 +9,7 @@ A C++17 implementation of the CoAP protocol ([RFC 7252](https://www.rfc-editor.o
 - CoAP server, with semi-dynamic registration of endpoints
 - Async responses
 - Resource observation, server side ([RFC 7641](https://www.rfc-editor.org/rfc/rfc7641))
+- Block-wise transfers, server side ([RFC 7959](https://www.rfc-editor.org/rfc/rfc7959))
 
 **Goals:**
 - No heap allocations — all buffers are statically sized or provided via `MemoryPool`
@@ -351,6 +352,87 @@ Behaviour details:
 - Not implemented: NSTART/RTT congestion control (§4.5.1), updating the Observe value of an already-queued CON retransmission (§4.4), proactive Max-Age refresh (§4.3.1), ETag validation with 2.03 notifications (§4.3.2), transmission superseding (§4.5.2).
 
 See [examples/raw/raw.cpp](examples/raw/raw.cpp) for a complete working example (`GET /counter`).
+
+## Block-wise transfers (RFC 7959, server side)
+
+Bodies larger than one datagram are transferred in blocks. The API is split by direction — *downloads* (a client GETs a large response body; RFC 7959 Block2) and *uploads* (a client PUTs/POSTs a large request body; RFC 7959 Block1) — and, on both sides, by how the body is accessed:
+
+| | `ServeDownload(options, body)` | `ServeDownload(options, size, source)` | `UploadTransfer` | `UploadAssembler` |
+|---|---|---|---|---|
+| Direction | Response body → client | Response body → client | Request body ← client | Request body ← client |
+| RFC 7959 option | Block2 | Block2 | Block1 | Block1 |
+| Kind | Free function (span overload) | Free function (streaming overload) | Stateful class (one per resource) | Stateful class (one per resource) |
+| Server-side state | None — each request names its block | None — each request names its block | Transfer position only (~64 bytes) | Transfer position + body buffer |
+| Body in RAM | Yes — one contiguous `span` (RAM or memory-mapped flash), served as zero-copy slices | No — the source callback writes each block directly into the outgoing message buffer | No — handler consumes each block at its byte offset | Yes — reassembled into a caller-provided buffer |
+| Typical use | Logs, in-RAM reports | External flash, data computed on the fly | Firmware written straight to flash | Bodies that must be parsed as a whole (JSON, protobuf) |
+
+**Downloads — `ServeDownload()`.** Stateless by design: every Block2 request names the exact block it wants, so the handler simply runs once per block and `ServeDownload()` slices out the requested window, negotiating the block size and attaching the Block2/Size2/ETag options:
+
+```cpp
+#include "coap_pp/server/blockwise.hpp"
+
+{codes::kGet, "/image", RawRouter::Bind([&](const RawRequest& req) {
+   auto resp = ServeDownload(req.options, span<const std::byte>{image});
+   resp.content_format = ContentFormat::kOctetStream;
+   return resp;
+ })},
+```
+
+For representations that are not addressable as one contiguous span (external flash, computed data) there is a streaming overload, `ServeDownload(options, total_size, source)`. The source callback is invoked once per response with the byte offset of the requested block and an output window of exactly the block's length, pointing directly into the outgoing message buffer — no intermediate copy. It must fill the window completely and return the number of bytes written:
+
+```cpp
+{codes::kGet, "/log", RawRouter::Bind([&](const RawRequest& req) {
+   auto resp = ServeDownload(req.options, ext_flash.Size(),
+                             [&](std::size_t offset, span<std::byte> out) {
+                               ext_flash.Read(offset, out);
+                               return out.size();
+                             });
+   resp.content_format = ContentFormat::kOctetStream;
+   return resp;
+ })},
+```
+
+**Uploads, streamed — `UploadTransfer`.** A per-resource state machine that hands each block to the handler as `(Offset(), Data())` for immediate consumption, so the full body never has to fit into RAM:
+
+```cpp
+UploadTransfer upload{4096};  // advertise ≤ 4096-byte blocks (e.g. flash page size)
+
+{codes::kPut, "/firmware", RawRouter::Bind([&](const RawRequest& req) {
+   switch (upload.Accept(req)) {
+     case UploadTransfer::Status::kRejected:
+       return upload.Reject();                    // 4.00 / 4.08
+     case UploadTransfer::Status::kIntermediate:
+       flash.Write(upload.Offset(), upload.Data());
+       return upload.Continue();                  // 2.31 Continue
+     case UploadTransfer::Status::kFinal:
+       flash.Write(upload.Offset(), upload.Data());
+       return upload.Finish(Response<span<const std::byte>>{codes::kChanged});
+   }
+ })},
+```
+
+**Uploads, assembled — `UploadAssembler`.** A convenience wrapper around `UploadTransfer` for handlers that need the complete body at once. It collects the blocks into a caller-provided buffer and answers all intermediate/error responses itself; the handler only runs its own logic when the body is complete:
+
+```cpp
+std::array<std::byte, 2048> config_buf;
+UploadAssembler upload{config_buf};
+
+{codes::kPost, "/config", RawRouter::Bind([&](const RawRequest& req) {
+   if (upload.Accept(req) == UploadAssembler::Status::kReply) {
+     return upload.Reply();  // 2.31 / 4.00 / 4.08 / 4.13
+   }
+   ApplyConfig(upload.Body());
+   return upload.Finish(Response<span<const std::byte>>{codes::kChanged});
+ })},
+```
+
+Behaviour details:
+
+- A download handler runs once per block, so the representation must be stable across the transfer — supply `DownloadConfig::etag` so clients can detect a change between blocks. `Size2` (total body size) is attached to the first block; a request without a Block2 option is answered block-wise automatically when the body exceeds one block.
+- Uploads follow the "atomic" style of RFC 7959 §2.5: in-sequence blocks are answered with 2.31 Continue, out-of-order blocks with 4.08 Request Entity Incomplete, and `UploadAssembler` rejects bodies beyond its buffer with 4.13 Request Entity Too Large (carrying `Size1` = capacity). A handler written against `UploadTransfer`/`UploadAssembler` transparently handles plain (non-block-wise) requests as well: they complete immediately as a single block.
+- One instance supports one upload at a time. A client starting over supersedes an unfinished transfer (last writer wins); a stray request from another client is rejected with 4.08 without disturbing the active transfer. A retransmitted block (lost ACK) is re-accepted at the same offset, so offset-based sinks stay idempotent.
+
+See [examples/blockwise/blockwise.cpp](examples/blockwise/blockwise.cpp) for a complete working example of all three (`GET /image`, `PUT /firmware`, `POST /config`), and [examples/blockwise/blockwise_client.py](examples/blockwise/blockwise_client.py) for an aiocoap client driving them.
 
 ## Integrating via CMake FetchContent
 

@@ -88,17 +88,23 @@ Response(Code, T) -> Response<T>;
 namespace detail {
 
 // Builds the WireResponse for a Response<T>. Response<span<const std::byte>>
-// is passed through as raw bytes; any other payload type is serialized via
-// Serializer (falling back to Serializer::kContentFormat when the response
-// does not specify one). The returned WireResponse's serialize callback
-// references resp.payload — resp must stay alive until the message has been
-// serialized, which all (synchronous) send paths guarantee.
+// is passed through as raw bytes; Response<SerializePayloadCallback> streams
+// its payload through the callback (e.g. block-wise responses generated on
+// the fly); any other payload type is serialized via Serializer (falling back
+// to Serializer::kContentFormat when the response does not specify one). The
+// returned WireResponse's serialize callback references resp.payload — resp
+// must stay alive until the message has been serialized, which all
+// (synchronous) send paths guarantee.
 template <typename Serializer, typename T>
 WireResponse MakeWireResponse(const Response<T>& resp) {
   WireResponse wire{resp.code, {}, resp.content_format, resp.options};
   if constexpr (std::is_same_v<T, span<const std::byte>>) {
     if (!resp.payload.empty()) {
       wire.serialize_payload = RawBytesSerializeCallback(resp.payload);
+    }
+  } else if constexpr (std::is_same_v<T, SerializePayloadCallback>) {
+    if (resp.payload) {
+      wire.serialize_payload = resp.payload;
     }
   } else {
     if (wire.content_format == ContentFormat::kNoContentFormat) {
@@ -206,6 +212,7 @@ struct RawRequest {
   template <typename, typename>
   friend class Router;  // Router<Ser, Deser>::Bind may need routing context
   friend class ObservableBase;  // observer registration needs sender + token
+  friend class UploadTransfer;  // RFC 7959 upload tracking needs the sender
 
   CoapServer* server_;
   Endpoint sender_;

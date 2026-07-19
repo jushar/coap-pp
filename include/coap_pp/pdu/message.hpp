@@ -55,6 +55,7 @@ inline constexpr Code kDeleted = Code::Make(2, 2);
 inline constexpr Code kValid = Code::Make(2, 3);
 inline constexpr Code kChanged = Code::Make(2, 4);
 inline constexpr Code kContent = Code::Make(2, 5);
+inline constexpr Code kContinue = Code::Make(2, 31);  // RFC 7959
 
 // 4.xx Client Error
 inline constexpr Code kBadRequest = Code::Make(4, 0);
@@ -64,6 +65,7 @@ inline constexpr Code kForbidden = Code::Make(4, 3);
 inline constexpr Code kNotFound = Code::Make(4, 4);
 inline constexpr Code kMethodNotAllowed = Code::Make(4, 5);
 inline constexpr Code kNotAcceptable = Code::Make(4, 6);
+inline constexpr Code kRequestEntityIncomplete = Code::Make(4, 8);  // RFC 7959
 inline constexpr Code kPreconditionFailed = Code::Make(4, 12);
 inline constexpr Code kRequestEntityTooLarge = Code::Make(4, 13);
 inline constexpr Code kUnsupportedContentFormat = Code::Make(4, 15);
