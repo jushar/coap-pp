@@ -101,7 +101,6 @@ class Router : public RouterBase {
           return HandlerResult::kAsync;
         };
       } else {
-        using BodyType = typename ReturnType::BodyType;
         return [fn = std::forward<Fn>(fn)](
                    const RawRequest& req, WireSender& sender) -> HandlerResult {
           auto response = fn(req);
