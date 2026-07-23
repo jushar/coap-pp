@@ -42,6 +42,30 @@ enum class NotifyType : uint8_t {
   kNon,
 };
 
+namespace detail {
+
+// One registered observer: the (endpoint, token) pair plus per-observer
+// notification bookkeeping. Defined at namespace scope (not nested in
+// ObservableBase) so that ObserverStorage below and Observable's base-clause
+// can name it without relying on protected access.
+struct ObserverEntry {
+  Endpoint endpoint{};
+  Token token{};
+  // MID of the last notification sent; empty until the first notification.
+  std::optional<uint16_t> last_mid{};
+  uint8_t non_count{0};  // NONs since the last CON (kAuto promotion)
+  bool used{false};
+};
+
+// Inline storage for an Observable's observer entries. Made the FIRST base of
+// Observable (before ObservableBase) so that the storage_ can be passed to ObservableBase ctor.
+template <std::size_t N>
+struct ObserverStorage {
+  std::array<ObserverEntry, N> storage_{};
+};
+
+}  // namespace detail
+
 // ── ObservableBase ───────────────────────────────────────────────────────────
 // RFC 7641 observer list for a single resource. Non-template base holding all
 // logic; use Observable<MaxObservers, Serializer> below, which provides the
@@ -96,14 +120,7 @@ class ObservableBase : public IntrusiveListNode<ObservableBase> {
   ObservableBase& operator=(const ObservableBase&) = delete;
 
  protected:
-  struct ObserverEntry {
-    Endpoint endpoint{};
-    Token token{};
-    // MID of the last notification sent; empty until the first notification.
-    std::optional<uint16_t> last_mid{};
-    uint8_t non_count{0};  // NONs since the last CON (kAuto promotion)
-    bool used{false};
-  };
+  using ObserverEntry = detail::ObserverEntry;
 
   // Registers *this with server for RST/CON-timeout observer removal.
   // observers is caller-provided storage; both must outlive *this.
@@ -157,10 +174,11 @@ class ObservableBase : public IntrusiveListNode<ObservableBase> {
 //   // Whenever the resource state changes:
 //   observable.Notify(Response{codes::kContent, payload});
 template <std::size_t MaxObservers, typename Serializer = NoopSerializer>
-class Observable : public ObservableBase {
+class Observable : private detail::ObserverStorage<MaxObservers>, // Observe storage HAS to be initialized before ObservableBase
+                   public ObservableBase {
  public:
   explicit Observable(CoapServer& server)
-      : ObservableBase{server, {storage_.data(), storage_.size()}} {}
+      : ObservableBase{server, {this->storage_.data(), this->storage_.size()}} {}
 
   using ObservableBase::Notify;
 
@@ -169,9 +187,6 @@ class Observable : public ObservableBase {
   void Notify(const Response<T>& resp, NotifyType type = NotifyType::kAuto) {
     ObservableBase::Notify(detail::MakeWireResponse<Serializer>(resp), type);
   }
-
- private:
-  std::array<ObserverEntry, MaxObservers> storage_{};
 };
 
 }  // namespace coap_pp
