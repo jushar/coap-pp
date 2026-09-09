@@ -43,6 +43,8 @@ class ObservableBase;
 //   // are dropped.
 //   // Unregistered paths -> 4.04 Not Found.
 //   // Path matched but wrong method -> 4.05 Method Not Allowed.
+//   // A route path ending in "/*" matches that path and everything below it;
+//   // literal routes are matched first, so a wildcard never shadows one.
 //   // Deserialization failure -> 4.00 Bad Request.
 //   // Async handlers return AsyncResponse from req.MakeAsync() instead of
 //   Response.

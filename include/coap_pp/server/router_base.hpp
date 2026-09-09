@@ -18,6 +18,13 @@ namespace coap_pp {
 // The server automatically returns 4.05 Method Not Allowed when the path
 // matches but the request method does not, so handlers need not check
 // req.method themselves.
+//
+// A path ending in "/*" is a wildcard: it matches the path before the "/*" and
+// everything below it. Route "/*" under base "/files" matches "/files",
+// "/files/", "/files/a" and "/files/a/b", but not "/filesx". Literal routes are
+// always matched first, so a wildcard never shadows a more specific path; the
+// handler of a wildcard route is not told which path matched and must read the
+// Uri-Path options from RawRequest::options itself.
 struct Route {
   Code method;
   std::string_view path;

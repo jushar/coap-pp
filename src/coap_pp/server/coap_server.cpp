@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <string_view>
 
 #include "coap_pp/content_formats.hpp"
 #include "coap_pp/log.hpp"
@@ -36,6 +37,34 @@ std::size_t JoinUriPath(const OptionsView& opts, char* buf,
     len += copy_len;
   }
   return len;
+}
+
+// A route path ending in "/*" is a wildcard: it matches the path before the
+// "/*" and everything below it. Route "/*" under base "/files" therefore
+// matches "/files", "/files/", "/files/a" and "/files/a/b" - but not
+// "/filesx", because the character after the prefix must be a '/'.
+constexpr std::string_view kWildcardSuffix{"/*"};
+
+bool IsWildcardRoute(std::string_view route_path) {
+  return route_path.size() >= kWildcardSuffix.size() &&
+         route_path.substr(route_path.size() - kWildcardSuffix.size()) ==
+             kWildcardSuffix;
+}
+
+bool WildcardMatches(std::string_view route_path, std::string_view suffix) {
+  if(!IsWildcardRoute(route_path)){
+    return false;
+  }
+  const auto prefix =
+      route_path.substr(0, route_path.size() - kWildcardSuffix.size());
+  if (suffix == prefix) return true;
+  return suffix.size() > prefix.size() &&
+         suffix.substr(0, prefix.size()) == prefix &&
+         suffix[prefix.size()] == '/';
+}
+
+bool StartsWith(std::string_view prefix, std::string_view path){
+    return path.find(prefix) != std::string_view::npos;
 }
 
 }  // namespace
@@ -70,23 +99,36 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   // Full path = router.base_path + route.path (e.g. "/api" + "/sensors" =
   // "/api/sensors"). A path-only match (wrong method) yields 4.05; no path
   // match yields 4.04.
+  //
+  // If found, exact match takes precedence over wildcard match.
   bool path_matched = false;
   const Route* found_route = nullptr;
-  for (const RouterBase& router : routers_) {
-    const auto base = router.GetBasePath();
-    if (request_path.size() < base.size() ||
-        request_path.substr(0, base.size()) != base)
+  const Route* found_wildcard_route = nullptr;
+
+  for(auto &router : routers_){
+    if(!StartsWith(router.GetBasePath(), request_path)){
       continue;
-    const auto suffix = request_path.substr(base.size());
+    }
+    const auto suffix = request_path.substr(router.GetBasePath().size());
     for (const auto& route : router.GetRoutes()) {
-      if (route.path != suffix) continue;
-      path_matched = true;
-      if (route.method == msg.code) {
-        found_route = &route;
-        break;
+      if(route.path == suffix){
+        path_matched = true;
+        if(route.method == msg.code){
+          found_route = &route;
+          break;
+        }
+      } else if(WildcardMatches(route.path, suffix)){
+        path_matched = true;
+        if(route.method == msg.code){
+          found_wildcard_route = &route;
+          //no break - we still can find an exact match
+        }
       }
     }
-    if (found_route != nullptr) break;
+  }
+
+  if (found_route == nullptr && found_wildcard_route != nullptr){
+    found_route = found_wildcard_route;
   }
 
   if (found_route == nullptr) {

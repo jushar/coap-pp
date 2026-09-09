@@ -7,6 +7,7 @@ A C++17 implementation of the CoAP protocol ([RFC 7252](https://www.rfc-editor.o
 **Features:**
 - CoAP messaging (reliable/unreliable messages, request/response, retransmission)
 - CoAP server, with semi-dynamic registration of endpoints
+- Wildcard routes (`/*`), for resources addressed by an arbitrary path
 - Async responses
 - Resource observation, server side ([RFC 7641](https://www.rfc-editor.org/rfc/rfc7641))
 - Block-wise transfers, server side ([RFC 7959](https://www.rfc-editor.org/rfc/rfc7959))
@@ -121,6 +122,33 @@ int main() {
 ```
 
 See [examples/serde_nanopb/serde_nanopb.cpp](examples/serde_nanopb/serde_nanopb.cpp) for a complete example including async (deferred) responses.
+
+## Wildcard routes
+
+A route path ending in `/*` matches the path before the `/*` and everything below it. This is for resources whose path is data rather than a fixed set of endpoints - a file store, for example, where one handler serves any path the client names:
+
+```cpp
+static const std::array<Route, 3> kRoutes{{
+    {codes::kGet,    "/*", Router<>::Bind<&FileStore::Download>(store)},
+    {codes::kPut,    "/*", Router<>::Bind<&FileStore::Upload>(store)},
+    {codes::kDelete, "/*", Router<>::Bind<&FileStore::Delete>(store)},
+}};
+static Router<> files{"/files", kRoutes};
+```
+
+`"/*"` under base `/files` matches `/files`, `/files/`, `/files/a` and `/files/a/b`. It does not match `/filesx`: the character following the prefix must be a `/`. A wildcard is scoped to its router's base path and never becomes a catch-all for the whole server, so an unrelated path still yields 4.04.
+
+Literal routes are matched before any wildcard route, across all routers, so a wildcard never shadows a more specific path regardless of registration order (which is unspecified anyway). A wildcard whose method matches does beat a literal route whose method does not, so a request reaches the handler able to serve it rather than yielding 4.05. A wrong method on a path that only a wildcard matches still yields 4.05, not 4.04.
+
+The handler is not told which path matched. It reconstructs the path from the `Uri-Path` options in `RawRequest::options`:
+
+```cpp
+for (const auto& opt : req.options) {
+    if (opt.number != OptionNumber::kUriPath) continue;
+    const auto* seg = std::get_if<std::string_view>(&opt.value);
+    if (seg != nullptr) { /* append '/' + *seg */ }
+}
+```
 
 ## Threading model
 

@@ -4,6 +4,9 @@
  */
 #include <gtest/gtest.h>
 
+#include <string>
+#include <string_view>
+
 #include "coap_pp/content_formats.hpp"
 #include "coap_pp/option_number.hpp"
 #include "coap_pp/pdu/builder.hpp"
@@ -550,6 +553,226 @@ TEST_F(ServerTest, MultipleRouters_EachDispatches) {
 
   EXPECT_TRUE(sensors_called);
   EXPECT_TRUE(actuators_called);
+}
+
+// --- Wildcard routes ("/*")
+// -------------------------------------------------
+
+TEST_F(ServerTest, Wildcard_MatchesAnyPathBelowPrefix) {
+  std::string matched_path;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/*",
+        [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+          // The handler is not told which path matched, so it rebuilds the path
+          // from the Uri-Path options - the only way a wildcard handler can
+          // know what was requested.
+          for (const auto& opt : req.options) {
+            if (opt.number != OptionNumber::kUriPath) continue;
+            const auto* sv = std::get_if<std::string_view>(&opt.value);
+            if (sv == nullptr) continue;
+            matched_path += '/';
+            matched_path += *sv;
+          }
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"/files", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/files/a/b");
+
+  EXPECT_EQ(matched_path, "/files/a/b");
+}
+
+TEST_F(ServerTest, Wildcard_MatchesBarePrefix) {
+  bool called = false;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/*",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"/files", routes};
+  server_.AddRouter(router);
+
+  // "/files" with nothing below it: a collection resource is reachable through
+  // its own wildcard route, so no extra literal route is needed for it.
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/files");
+
+  EXPECT_TRUE(called);
+}
+
+TEST_F(ServerTest, Wildcard_DoesNotMatchPrefixWithoutSeparator) {
+  bool called = false;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/data/*",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  // "/database" starts with "/data" but the next character is not '/', so the
+  // wildcard must not swallow a sibling resource whose name merely begins with
+  // the same characters.
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/database");
+
+  EXPECT_FALSE(called);
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const auto resp = transport_.DeserializeFirstResponse();
+  EXPECT_EQ(resp.code, codes::kNotFound);
+}
+
+TEST_F(ServerTest, Wildcard_LiteralRouteWins_RegardlessOfOrder) {
+  // Registered wildcard-first so a single-pass loop would let the wildcard win.
+  // Router and route search order is unspecified, so precedence has to come
+  // from the two-pass match, not from registration order.
+  bool wildcard_called = false;
+  bool literal_called = false;
+  const std::array<Route, 2> routes{
+      {{codes::kGet, "/*",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          wildcard_called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }},
+       {codes::kGet, "/exact",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          literal_called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"/files", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/files/exact");
+
+  EXPECT_TRUE(literal_called);
+  EXPECT_FALSE(wildcard_called);
+}
+
+TEST_F(ServerTest, Wildcard_LiteralRouteInAnotherRouterStillWins) {
+  bool wildcard_called = false;
+  bool literal_called = false;
+  const std::array<Route, 1> wildcard_routes{
+      {{codes::kGet, "/*",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          wildcard_called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  const std::array<Route, 1> literal_routes{
+      {{codes::kGet, "/files/exact",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          literal_called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase wildcard_router{"/files", wildcard_routes};
+  RouterBase literal_router{"", literal_routes};
+  server_.AddRouter(wildcard_router);
+  server_.AddRouter(literal_router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/files/exact");
+
+  EXPECT_TRUE(literal_called);
+  EXPECT_FALSE(wildcard_called);
+}
+
+TEST_F(ServerTest, Wildcard_WrongMethod_Returns405NotNotFound) {
+  const std::array<Route, 1> routes{
+      {{codes::kPut, "/*",
+        [](const RawRequest&, WireSender& s) -> HandlerResult {
+          s(WireResponse{codes::kChanged});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"/files", routes};
+  server_.AddRouter(router);
+
+  // A wildcard hit has to count as a path match, otherwise a wrong method on a
+  // wildcard-only path is reported as 4.04 and the client cannot tell an absent
+  // resource from an unsupported method.
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/files/a");
+
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const auto resp = transport_.DeserializeFirstResponse();
+  EXPECT_EQ(resp.code, codes::kMethodNotAllowed);
+}
+
+TEST_F(ServerTest, Wildcard_MethodMatch_BeatsLiteralWithWrongMethod) {
+  bool wildcard_called = false;
+  const std::array<Route, 2> routes{
+      {{codes::kPut, "/exact",
+        [](const RawRequest&, WireSender& s) -> HandlerResult {
+          s(WireResponse{codes::kChanged});
+          return HandlerResult::kSync;
+        }},
+       {codes::kGet, "/*",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          wildcard_called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"/files", routes};
+  server_.AddRouter(router);
+
+  // The literal route matches the path but not the method; the wildcard matches
+  // both. Serving the request beats answering 4.05 for a method the server can
+  // in fact handle at this path.
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/files/exact");
+
+  EXPECT_TRUE(wildcard_called);
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const auto resp = transport_.DeserializeFirstResponse();
+  EXPECT_EQ(resp.code, codes::kContent);
+}
+
+TEST_F(ServerTest, Wildcard_UnrelatedPath_StillReturns404) {
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/*",
+        [](const RawRequest&, WireSender& s) -> HandlerResult {
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"/files", routes};
+  server_.AddRouter(router);
+
+  // A wildcard is scoped to its router's base path; it must not become a
+  // catch-all for the whole server.
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/other/a");
+
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const auto resp = transport_.DeserializeFirstResponse();
+  EXPECT_EQ(resp.code, codes::kNotFound);
+}
+
+TEST_F(ServerTest, Wildcard_EmptyTrailingSegment_Matches) {
+  bool called = false;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/*",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"/files", routes};
+  server_.AddRouter(router);
+
+  // "/files/" is two Uri-Path options - "files" and an empty one - which
+  // InjectRequest's splitter cannot express, so the message is built directly.
+  MessageBuilder<4> b;
+  b.SetType(MessageType::kNon).SetCode(codes::kGet).SetMessageId(0x0001u);
+  b.AddOption(OptionNumber::kUriPath, std::string_view{"files"});
+  b.AddOption(OptionNumber::kUriPath, std::string_view{""});
+  std::array<std::byte, 256> buf{};
+  std::size_t written = 0u;
+  (void)Serialize(b.Build(), buf, written);
+  transport_.Inject(Endpoint{}, span<const std::byte>{buf.data(), written});
+
+  EXPECT_TRUE(called);
 }
 
 // ── Duplicate detection (RFC 7252 §4.5)
