@@ -42,6 +42,9 @@ class ObservableBase;
 //   // re-executed (§4.5); duplicate CONs get an empty ACK, duplicate NONs
 //   // are dropped.
 //   // Unregistered paths -> 4.04 Not Found.
+//   // "{}" route segments capture path parameters: a route "/config/{}"
+//   // matches "/config/foo" and the handler reads
+//   // req.PathParams().Get(0) == "foo".
 //   // Path matched but wrong method -> 4.05 Method Not Allowed.
 //   // Deserialization failure -> 4.00 Bad Request.
 //   // Async handlers return AsyncResponse from req.MakeAsync() instead of
@@ -53,7 +56,8 @@ class CoapServer : private MessageHandlerIF {
 
   // Mount a router. The order in which routers are searched for a matching
   // route is unspecified; a router must not be mounted on more than one
-  // server.
+  // server. Panics if a route path is malformed (non-empty path not starting
+  // with '/') or declares more than kMaxPathParams "{}" placeholders.
   void AddRouter(RouterBase& router);
 
  private:

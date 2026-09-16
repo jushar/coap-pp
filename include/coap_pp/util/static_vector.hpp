@@ -62,6 +62,8 @@ class StaticVector {
 
   constexpr void pop_back() { --size_; }
 
+  constexpr void clear() { size_ = 0; }
+
   constexpr iterator erase(iterator pos) {
     for (auto it = pos; it + 1 != end(); ++it) *it = std::move(*(it + 1));
     --size_;

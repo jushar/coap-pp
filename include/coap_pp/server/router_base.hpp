@@ -18,6 +18,22 @@ namespace coap_pp {
 // The server automatically returns 4.05 Method Not Allowed when the path
 // matches but the request method does not, so handlers need not check
 // req.method themselves.
+//
+// Path parameters: the segment "{}" matches any single request segment and
+// captures its value, readable in the handler by index via
+// req.PathParams().Get(i) (i counts placeholders in path order, base_path
+// included). Only the exact segment "{}" is a placeholder — anything else,
+// including "{id}", is compared literally.
+// Matching is first-match-wins in registration order, so
+// list literal routes ("/config/reset") before patterned ones ("/config/{}").
+// At most kMaxPathParams placeholders per route (COAP_PP_MAX_PATH_PARAMS);
+// CoapServer::AddRouter panics on violation.
+//
+// Tail parameter: the segment "{*}" matches all remaining request segments —
+// at least one, so "/fs/{*}" does not match "/fs" — and captures them for
+// req.PathParams().Tail(). It does not occupy a Get(i) index and does not
+// count against kMaxPathParams. At most one "{*}" per route, only as the last
+// segment of path and never in base_path; AddRouter panics on violation.
 struct Route {
   Code method;
   std::string_view path;

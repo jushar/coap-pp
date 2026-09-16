@@ -57,6 +57,7 @@ CMake options:
 | `COAP_PP_DUPLICATE_CACHE_SIZE` | `8` | Number of recent non-idempotent requests remembered for duplicate detection (RFC 7252 §4.5) |
 | `COAP_PP_USE_INPLACE_FUNCTION` | `OFF` | Use a fixed-buffer `inplace_function` instead of `std::function` for `RequestHandler` (no heap allocation) |
 | `COAP_PP_INPLACE_FUNCTION_CAPACITY` | `32` | Buffer capacity in bytes for the `inplace_function` storage (only when `COAP_PP_USE_INPLACE_FUNCTION=ON`) |
+| `COAP_PP_MAX_PATH_PARAMS` | `4` | Max. number of path parameters to match |
 
 ### Running tests
 
@@ -121,6 +122,44 @@ int main() {
 ```
 
 See [examples/serde_nanopb/serde_nanopb.cpp](examples/serde_nanopb/serde_nanopb.cpp) for a complete example including async (deferred) responses.
+
+## Path parameters
+
+The route segment `{}` matches any single request segment and captures its value. Captured values are reached via `req.PathParams()` and read **by index** in path order:
+
+```cpp
+{codes::kGet, "/config/{}", Router<>::Bind([](const RawRequest& req) {
+    // GET /config/myConfigProperty
+    // -> *req.PathParams().Get(0) == "myConfigProperty"
+    const std::string_view id = *req.PathParams().Get(0);
+    // Numeric segments can be parsed directly:
+    // const std::optional<uint32_t> n = req.PathParams().GetUint(0);
+    ...
+})},
+```
+
+Matching is first-match-wins in registration order, so list literal routes (`/config/reset`) before patterned ones (`/config/{}`). Captured values are non-owning views into the receive buffer — copy them before the handler returns. A route may use at most `COAP_PP_MAX_PATH_PARAMS` placeholders.
+
+### Tail parameter
+
+The segment `{*}` matches **all remaining** request segments — useful for filesystem-style routes:
+
+```cpp
+{codes::kGet, "/fs/{*}", Router<>::Bind([](const RawRequest& req) {
+    // GET /fs/etc/config.json -> tail segments "etc", "config.json"
+    char path[64];
+    const auto len = req.PathParams().Tail().CopyTo(path, sizeof path);
+    if (!len) return Response{codes::kBadOption};  // path too long for buf
+    // path == "etc/config.json" (NUL-terminated), *len == 15
+    ...
+})},
+```
+
+Each segment is a separate CoAP option, so the tail is not contiguous in the receive buffer and there is no joined `string_view` to hand out: `PathParams().Tail()` is a range of segments you can iterate, and `CopyTo` joins them (separated by `/`, no leading slash, NUL-terminated) into a buffer of your own — typically the one you need for `open()` anyway. It returns `nullopt` if the buffer is too small.
+
+`{*}` requires at least one segment, so `/fs/{*}` does **not** match `/fs` — register a separate `/fs` route if you need it. A route may contain at most one `{*}`, only as its last segment. The tail does not occupy a `Get(i)` index and does not count against `COAP_PP_MAX_PATH_PARAMS`, so `/fs/{}/{*}` still has the `{}` at index 0.
+
+> **Segments are passed through verbatim.** `.`, `..` and empty segments are *not* rejected. A handler that turns the tail into a filesystem path must validate the segments itself before opening anything.
 
 ## Threading model
 

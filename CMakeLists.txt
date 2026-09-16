@@ -22,6 +22,9 @@ set(COAP_PP_MAX_RESPONSE_OPTIONS "4" CACHE STRING
 set(COAP_PP_DUPLICATE_CACHE_SIZE "8" CACHE STRING
     "Number of recent non-idempotent requests remembered for duplicate detection (RFC 7252 §4.5)")
 
+set(COAP_PP_MAX_PATH_PARAMS "4" CACHE STRING
+    "Maximum number of {} path parameters per route (base path + route path)")
+
 set(COAP_PP_OBSERVE_CON_EVERY "24" CACHE STRING
     "Every Nth observe notification per observer is sent confirmable (RFC 7641 §4.5); 0/1 = always CON")
 
@@ -43,6 +46,7 @@ target_compile_definitions(coap-pp PUBLIC
     COAP_PP_LOG_LEVEL=${COAP_PP_LOG_LEVEL}
     COAP_PP_MAX_RESPONSE_OPTIONS=${COAP_PP_MAX_RESPONSE_OPTIONS}
     COAP_PP_DUPLICATE_CACHE_SIZE=${COAP_PP_DUPLICATE_CACHE_SIZE}
+    COAP_PP_MAX_PATH_PARAMS=${COAP_PP_MAX_PATH_PARAMS}
     COAP_PP_OBSERVE_CON_EVERY=${COAP_PP_OBSERVE_CON_EVERY})
 if(DEFINED COAP_PP_NO_STD_SPAN)
     target_compile_definitions(coap-pp PUBLIC COAP_PP_NO_STD_SPAN=${COAP_PP_NO_STD_SPAN})

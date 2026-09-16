@@ -7,19 +7,24 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <optional>
+#include <string_view>
 
 #include "coap_pp/content_formats.hpp"
 #include "coap_pp/log.hpp"
 #include "coap_pp/option_number.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/server/observable.hpp"
+#include "coap_pp/server/path_params.hpp"
 #include "coap_pp/server/resource.hpp"
+#include "coap_pp/util/path_match.hpp"
 
 namespace coap_pp {
 namespace {
 
 // Build the request path ("/seg1/seg2") from Uri-Path options into buf.
 // Returns the number of characters written (0 if no Uri-Path options found).
+// Used for logging only — matching works on the individual options.
 std::size_t JoinUriPath(const OptionsView& opts, char* buf,
                         std::size_t buf_size) {
   std::size_t len = 0;
@@ -45,6 +50,32 @@ CoapServer::CoapServer(Messenger& messenger) : messenger_{messenger} {
 }
 
 void CoapServer::AddRouter(RouterBase& router) {
+  // Validate the route table at registration time so a malformed pattern
+  // fails deterministically at init instead of on the first matching request.
+  const std::string_view base = router.GetBasePath();
+  if (!base.empty() && base.front() != '/') {
+    detail::Panic("Router base path must be empty or start with '/'");
+  }
+  if (detail::CountTailPlaceholders(base) > 0) {
+    detail::Panic("'{*}' is not allowed in a router base path");
+  }
+  for (const Route& route : router.GetRoutes()) {
+    if (!route.path.empty() && route.path.front() != '/') {
+      detail::Panic("Route path must be empty or start with '/'");
+    }
+    if (detail::CountPlaceholders(base) +
+            detail::CountPlaceholders(route.path) >
+        kMaxPathParams) {
+      detail::Panic("Route exceeds COAP_PP_MAX_PATH_PARAMS placeholders");
+    }
+    const std::size_t tails = detail::CountTailPlaceholders(route.path);
+    if (tails > 1) {
+      detail::Panic("Route may contain at most one '{*}' placeholder");
+    }
+    if (tails == 1 && !detail::EndsWithTailPlaceholder(route.path)) {
+      detail::Panic("'{*}' must be the last segment of a route path");
+    }
+  }
   routers_.PushFront(router);
 }
 
@@ -60,26 +91,29 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   // them with RST before dispatch (RFC 7252 §4.3).
   if (!IsRequest(msg.code)) return;
 
-  // Reconstruct the request URI path from Uri-Path options.
+  // Reconstruct the request URI path from Uri-Path options (logging only).
   char path_buf[256];
   const std::size_t path_len =
       JoinUriPath(msg.options, path_buf, sizeof(path_buf));
-  const std::string_view request_path{path_buf, path_len};
 
   // Find the matching route across all registered routers.
   // Full path = router.base_path + route.path (e.g. "/api" + "/sensors" =
-  // "/api/sensors"). A path-only match (wrong method) yields 4.05; no path
-  // match yields 4.04.
+  // "/api/sensors"); "{}" pattern segments match any single request segment
+  // and capture its value, a trailing "{*}" matches all remaining segments.
+  // A path-only match (wrong method) yields 4.05; no path match yields 4.04.
+  //
+  // params is overwritten by every path-level match, but the method match
+  // breaks out immediately, so on exit it always belongs to found_route.
+  PathParams params;
+  std::optional<OptionsIterator> tail_begin;
   bool path_matched = false;
   const Route* found_route = nullptr;
   for (const RouterBase& router : routers_) {
-    const auto base = router.GetBasePath();
-    if (request_path.size() < base.size() ||
-        request_path.substr(0, base.size()) != base)
-      continue;
-    const auto suffix = request_path.substr(base.size());
     for (const auto& route : router.GetRoutes()) {
-      if (route.path != suffix) continue;
+      if (!detail::MatchRoute(router.GetBasePath(), route.path, msg.options,
+                              params.values_, tail_begin)) {
+        continue;
+      }
       path_matched = true;
       if (route.method == msg.code) {
         found_route = &route;
@@ -123,8 +157,14 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   detail::Log<LogLevel::kDebug>("%.*s: Incoming request",
                                 static_cast<int>(path_len), path_buf);
 
-  RawRequest req{msg.code, msg.options, msg.payload,    *this,
-                 sender,   msg.type,    msg.message_id, msg.token};
+  // Publish the "{*}" capture only once the route is settled, so a pattern
+  // route rejected for its method cannot leave a stale tail behind.
+  if (tail_begin) {
+    params.tail_ = PathTail{*tail_begin, msg.options.end()};
+  }
+
+  RawRequest req{msg.code, msg.options,    msg.payload, params, *this,
+                 sender,   msg.type,       msg.message_id, msg.token};
 
   // WireSender is called synchronously from within the handler so the
   // handler's local Response<T> is still alive when we serialize.
@@ -134,8 +174,8 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   const HandlerResult result = found_route->handler(req, wire_sender);
 
   if (result == HandlerResult::kAsync) {
-    detail::Log<LogLevel::kDebug>(
-        "%s: async response, sending empty ack if CON", path_buf);
+    detail::Log<LogLevel::kDebug>("%.*s: async response, sending empty ack if CON",
+                                  static_cast<int>(path_len), path_buf);
 
     // Async: for CON send an empty ACK immediately to stop client
     // retransmissions. The actual reply arrives later via

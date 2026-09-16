@@ -12,12 +12,15 @@ namespace coap_pp {
 // ────────────────────────────────────────────────────────────────
 
 RawRequest::RawRequest(Code method, OptionsView options,
-                       span<const std::byte> payload, CoapServer& server,
+                       span<const std::byte> payload,
+                       const coap_pp::PathParams& path_params,
+                       CoapServer& server,
                        const Endpoint& sender, MessageType req_type,
                        uint16_t req_mid, const Token& token)
     : method(method),
       options(options),
       payload(payload),
+      path_params_(&path_params),
       server_(&server),
       sender_(sender),
       req_type_(req_type),

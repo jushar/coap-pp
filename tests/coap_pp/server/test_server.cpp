@@ -4,7 +4,13 @@
  */
 #include <gtest/gtest.h>
 
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
 #include "coap_pp/content_formats.hpp"
+#include "coap_pp/panic.hpp"
 #include "coap_pp/option_number.hpp"
 #include "coap_pp/pdu/builder.hpp"
 #include "coap_pp/pdu/serialize.hpp"
@@ -30,7 +36,7 @@ class ServerTest : public ::testing::Test {
   void InjectRequest(MessageType type, Code method, uint16_t mid,
                      std::string_view path, span<const std::byte> payload = {},
                      const Endpoint& sender = Endpoint{}) {
-    MessageBuilder<4> b;
+    MessageBuilder<8> b;
     b.SetType(type).SetCode(method).SetMessageId(mid);
     std::string_view remaining = path;
     if (!remaining.empty() && remaining[0] == '/') remaining.remove_prefix(1);
@@ -550,6 +556,468 @@ TEST_F(ServerTest, MultipleRouters_EachDispatches) {
 
   EXPECT_TRUE(sensors_called);
   EXPECT_TRUE(actuators_called);
+}
+
+// ── Path parameters
+// ───────────────────────────────────────────────────────────
+
+TEST_F(ServerTest, PathParam_SingleCapture) {
+  std::string captured;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/config/{}",
+        [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+          captured = *req.PathParams().Get(0);
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u,
+                "/config/myConfigProperty");
+
+  EXPECT_EQ(captured, "myConfigProperty");
+}
+
+TEST_F(ServerTest, PathParam_MultipleCaptures_InPathOrder) {
+  std::string bus;
+  std::string addr;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/dev/{}/reg/{}",
+        [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+          bus = *req.PathParams().Get(0);
+          addr = *req.PathParams().Get(1);
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/dev/i2c1/reg/42");
+
+  EXPECT_EQ(bus, "i2c1");
+  EXPECT_EQ(addr, "42");
+}
+
+TEST_F(ServerTest, PathParam_MissingSegment_Returns404) {
+  bool called = false;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/config/{}",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/config");
+
+  EXPECT_FALSE(called);
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  EXPECT_EQ(transport_.DeserializeFirstResponse().code, codes::kNotFound);
+}
+
+TEST_F(ServerTest, PathParam_ExtraSegment_Returns404) {
+  bool called = false;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/config/{}",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/config/a/b");
+
+  EXPECT_FALSE(called);
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  EXPECT_EQ(transport_.DeserializeFirstResponse().code, codes::kNotFound);
+}
+
+TEST_F(ServerTest, PathParam_WrongMethod_Returns405) {
+  bool called = false;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/config/{}",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kPost, 0x0001u, "/config/foo");
+
+  EXPECT_FALSE(called);
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  EXPECT_EQ(transport_.DeserializeFirstResponse().code,
+            codes::kMethodNotAllowed);
+}
+
+TEST_F(ServerTest, PathParam_WithRouterBasePath) {
+  std::string captured;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/config/{}",
+        [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+          captured = *req.PathParams().Get(0);
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"/api", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/api/config/foo");
+
+  EXPECT_EQ(captured, "foo");
+}
+
+TEST_F(ServerTest, PathParam_LiteralRouteListedFirst_Wins) {
+  bool literal_called = false;
+  bool pattern_called = false;
+  const std::array<Route, 2> routes{{
+      {codes::kGet, "/config/reset",
+       [&](const RawRequest&, WireSender& s) -> HandlerResult {
+         literal_called = true;
+         s(WireResponse{codes::kContent});
+         return HandlerResult::kSync;
+       }},
+      {codes::kGet, "/config/{}",
+       [&](const RawRequest&, WireSender& s) -> HandlerResult {
+         pattern_called = true;
+         s(WireResponse{codes::kContent});
+         return HandlerResult::kSync;
+       }},
+  }};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/config/reset");
+  EXPECT_TRUE(literal_called);
+  EXPECT_FALSE(pattern_called);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0002u, "/config/other");
+  EXPECT_TRUE(pattern_called);
+}
+
+TEST_F(ServerTest, PathParam_OutOfRangeIndex_ReturnsNullopt) {
+  std::optional<std::string_view> out_of_range{std::string_view{"sentinel"}};
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/config/{}",
+        [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+          out_of_range = req.PathParams().Get(1);
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/config/foo");
+
+  EXPECT_FALSE(out_of_range.has_value());
+}
+
+TEST_F(ServerTest, PathParam_BracesInsideSegment_AreLiteralText) {
+  bool called = false;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/v{id}",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  // "v{id}" is not a placeholder — only the exact literal matches.
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/vfoo");
+  EXPECT_FALSE(called);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0002u, "/v{id}");
+  EXPECT_TRUE(called);
+}
+
+TEST_F(ServerTest, PathParam_WrongMethodPatternRouteFirst_ParamsBelongToMatch) {
+  // A wrong-method pattern route matching the same path is scanned first and
+  // overwrites params; the params seen by the handler must belong to the
+  // route that actually matched.
+  std::string captured;
+  const std::array<Route, 2> routes{{
+      {codes::kPost, "/{}/{}",
+       [](const RawRequest&, WireSender& s) -> HandlerResult {
+         s(WireResponse{codes::kContent});
+         return HandlerResult::kSync;
+       }},
+      {codes::kGet, "/config/{}",
+       [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+         captured = *req.PathParams().Get(0);
+         s(WireResponse{codes::kContent});
+         return HandlerResult::kSync;
+       }},
+  }};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/config/foo");
+
+  EXPECT_EQ(captured, "foo");
+}
+
+TEST_F(ServerTest, PathParam_GetUint_ParsesAndRejects) {
+  std::optional<uint32_t> ok;
+  std::optional<uint32_t> garbage;
+  std::optional<uint32_t> overflow;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/reg/{}/{}/{}",
+        [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+          ok = req.PathParams().GetUint(0);
+          garbage = req.PathParams().GetUint(1);
+          overflow = req.PathParams().GetUint(2);
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u,
+                "/reg/42/12x/99999999999");
+
+  ASSERT_TRUE(ok.has_value());
+  EXPECT_EQ(*ok, 42u);
+  EXPECT_FALSE(garbage.has_value());
+  EXPECT_FALSE(overflow.has_value());
+}
+
+// ── Tail parameter "{*}"
+// ──────────────────────────────────────────────────────
+
+TEST_F(ServerTest, PathTail_CapturesAllRemainingSegments) {
+  std::vector<std::string> segments;
+  std::optional<std::size_t> len;
+  char joined[32] = {};
+  std::size_t count = 0;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/user/{*}",
+        [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+          const PathTail& tail = req.PathParams().Tail();
+          for (const std::string_view seg : tail) segments.emplace_back(seg);
+          count = tail.size();
+          len = tail.CopyTo(joined, sizeof joined);
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/user/123/edit/345");
+
+  ASSERT_EQ(segments.size(), 3u);
+  EXPECT_EQ(segments[0], "123");
+  EXPECT_EQ(segments[1], "edit");
+  EXPECT_EQ(segments[2], "345");
+  EXPECT_EQ(count, 3u);
+  ASSERT_TRUE(len.has_value());
+  EXPECT_EQ(*len, 12u);
+  EXPECT_STREQ(joined, "123/edit/345");
+}
+
+TEST_F(ServerTest, PathTail_SingleSegment) {
+  char joined[16] = {};
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/fs/{*}",
+        [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+          (void)req.PathParams().Tail().CopyTo(joined, sizeof joined);
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/fs/a.txt");
+
+  EXPECT_STREQ(joined, "a.txt");
+}
+
+TEST_F(ServerTest, PathTail_RequiresAtLeastOneSegment_Returns404) {
+  bool called = false;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/fs/{*}",
+        [&](const RawRequest&, WireSender& s) -> HandlerResult {
+          called = true;
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/fs");
+
+  EXPECT_FALSE(called);
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  EXPECT_EQ(transport_.DeserializeFirstResponse().code, codes::kNotFound);
+}
+
+TEST_F(ServerTest, PathTail_MixedWithPlaceholder_IndicesUnaffected) {
+  std::string id;
+  char joined[16] = {};
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/user/{}/files/{*}",
+        [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+          id = *req.PathParams().Get(0);
+          (void)req.PathParams().Tail().CopyTo(joined, sizeof joined);
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/user/7/files/a/b");
+
+  EXPECT_EQ(id, "7");
+  EXPECT_STREQ(joined, "a/b");
+}
+
+TEST_F(ServerTest, PathTail_LiteralRouteRegisteredFirstWins) {
+  bool literal_called = false;
+  bool tail_called = false;
+  const std::array<Route, 2> routes{{
+      {codes::kGet, "/fs/status",
+       [&](const RawRequest&, WireSender& s) -> HandlerResult {
+         literal_called = true;
+         s(WireResponse{codes::kContent});
+         return HandlerResult::kSync;
+       }},
+      {codes::kGet, "/fs/{*}",
+       [&](const RawRequest&, WireSender& s) -> HandlerResult {
+         tail_called = true;
+         s(WireResponse{codes::kContent});
+         return HandlerResult::kSync;
+       }},
+  }};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/fs/status");
+  EXPECT_TRUE(literal_called);
+  EXPECT_FALSE(tail_called);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0002u, "/fs/etc/hosts");
+  EXPECT_TRUE(tail_called);
+}
+
+TEST_F(ServerTest, PathTail_CopyToTooSmall_ReturnsNullopt) {
+  std::optional<std::size_t> exact;
+  std::optional<std::size_t> too_small;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/fs/{*}",
+        [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+          // "a/bc" is 4 characters, so 5 bytes are needed with the terminator.
+          char big[5] = {};
+          char small[4] = {};
+          exact = req.PathParams().Tail().CopyTo(big, sizeof big);
+          too_small = req.PathParams().Tail().CopyTo(small, sizeof small);
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/fs/a/bc");
+
+  ASSERT_TRUE(exact.has_value());
+  EXPECT_EQ(*exact, 4u);
+  EXPECT_FALSE(too_small.has_value());
+}
+
+TEST_F(ServerTest, PathTail_RouteWithoutTailPlaceholder_IsEmpty) {
+  bool empty = false;
+  std::optional<std::size_t> len;
+  char joined[8] = {'x'};
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/config/{}",
+        [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+          empty = req.PathParams().Tail().empty();
+          len = req.PathParams().Tail().CopyTo(joined, sizeof joined);
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/config/foo");
+
+  EXPECT_TRUE(empty);
+  ASSERT_TRUE(len.has_value());
+  EXPECT_EQ(*len, 0u);
+  EXPECT_STREQ(joined, "");
+}
+
+TEST_F(ServerTest, PathTail_WrongMethodTailRouteFirst_TailBelongsToMatch) {
+  // A wrong-method "{*}" route matching the same path is scanned first; the
+  // tail seen by the handler must belong to the route that actually matched.
+  bool empty = false;
+  const std::array<Route, 2> routes{{
+      {codes::kPost, "/fs/{*}",
+       [](const RawRequest&, WireSender& s) -> HandlerResult {
+         s(WireResponse{codes::kContent});
+         return HandlerResult::kSync;
+       }},
+      {codes::kGet, "/fs/{}",
+       [&](const RawRequest& req, WireSender& s) -> HandlerResult {
+         empty = req.PathParams().Tail().empty();
+         s(WireResponse{codes::kContent});
+         return HandlerResult::kSync;
+       }},
+  }};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/fs/a");
+
+  EXPECT_TRUE(empty);
+}
+
+// ── Route registration validation
+// ─────────────────────────────────────────────
+
+class RouteValidationTest : public ServerTest {
+ protected:
+  void SetUp() override {
+    SetPanicHandler(
+        [](const char* reason) { throw std::runtime_error(reason); });
+  }
+  void TearDown() override { SetPanicHandler(nullptr); }
+
+  static HandlerResult Noop(const RawRequest&, WireSender& s) {
+    s(WireResponse{codes::kContent});
+    return HandlerResult::kSync;
+  }
+};
+
+TEST_F(RouteValidationTest, TailPlaceholderInBasePath_Panics) {
+  const std::array<Route, 1> routes{{{codes::kGet, "/a", Noop}}};
+  RouterBase router{"/fs/{*}", routes};
+  EXPECT_THROW(server_.AddRouter(router), std::runtime_error);
+}
+
+TEST_F(RouteValidationTest, TailPlaceholderNotLast_Panics) {
+  const std::array<Route, 1> routes{{{codes::kGet, "/fs/{*}/meta", Noop}}};
+  RouterBase router{"", routes};
+  EXPECT_THROW(server_.AddRouter(router), std::runtime_error);
+}
+
+TEST_F(RouteValidationTest, MultipleTailPlaceholders_Panics) {
+  const std::array<Route, 1> routes{{{codes::kGet, "/fs/{*}/{*}", Noop}}};
+  RouterBase router{"", routes};
+  EXPECT_THROW(server_.AddRouter(router), std::runtime_error);
+}
+
+TEST_F(RouteValidationTest, TailPlaceholderAsLastSegment_Accepted) {
+  const std::array<Route, 1> routes{{{codes::kGet, "/fs/{*}", Noop}}};
+  RouterBase router{"/api", routes};
+  EXPECT_NO_THROW(server_.AddRouter(router));
 }
 
 // ── Duplicate detection (RFC 7252 §4.5)

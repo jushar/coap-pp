@@ -43,10 +43,19 @@ int main() {
     return as_bytes(span{counter_text, static_cast<std::size_t>(len)});
   };
 
-  const std::array<Route, 3> routes{{
+  const std::array<Route, 4> routes{{
       {codes::kGet, "/hello", RawRouter::Bind([](const RawRequest&) {
          return Response{codes::kContent,
                          as_bytes(span{kHelloText.data(), kHelloText.size()}),
+                         ContentFormat::kTextPlain};
+       })},
+      // "{}" captures the second path segment: GET /hello/world responds
+      // with "world". The captured value is a view into the receive buffer,
+      // valid for the duration of the request — like req.payload in /echo.
+      {codes::kGet, "/hello/{}", RawRouter::Bind([](const RawRequest& req) {
+         const std::string_view name = *req.PathParams().Get(0);
+         return Response{codes::kContent,
+                         as_bytes(span{name.data(), name.size()}),
                          ContentFormat::kTextPlain};
        })},
       {codes::kPost, "/echo", RawRouter::Bind([](const RawRequest& req) {
@@ -71,6 +80,7 @@ int main() {
 
   std::cout << "CoAP server listening on coap://127.0.0.1:5683\n";
   std::cout << "  GET  /hello  ->  2.05 Content: \"" << kHelloText << "\"\n";
+  std::cout << "  GET  /hello/{}  ->  2.05 Content: <name>\n";
   std::cout << "  POST /echo   ->  2.05 Content: <echoed payload>\n";
   std::cout << "  GET  /counter (observable, increments every 5 s)\n";
   std::cout << "Press Ctrl+C to stop.\n";
