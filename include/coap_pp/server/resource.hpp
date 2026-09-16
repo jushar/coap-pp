@@ -12,9 +12,10 @@
 #include "coap_pp/content_formats.hpp"
 #include "coap_pp/pdu/message.hpp"
 #include "coap_pp/pdu/option.hpp"
+#include "coap_pp/pdu/option_list.hpp"
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/serde/serialize.hpp"
-#include "coap_pp/pdu/option_list.hpp"
+#include "coap_pp/server/path_params.hpp"
 #include "coap_pp/transport/endpoint.hpp"
 #include "coap_pp/util/function.hpp"
 #include "coap_pp/util/span.hpp"
@@ -29,8 +30,7 @@ class CoapServer;
 #ifndef COAP_PP_MAX_RESPONSE_OPTIONS
 #define COAP_PP_MAX_RESPONSE_OPTIONS 4
 #endif
-inline constexpr std::size_t kMaxResponseOptions =
-    COAP_PP_MAX_RESPONSE_OPTIONS;
+inline constexpr std::size_t kMaxResponseOptions = COAP_PP_MAX_RESPONSE_OPTIONS;
 
 // Additional CoAP options attached to an outbound response (e.g. ETag,
 // Max-Age, Location-Path). string/opaque values are non-owning views — the
@@ -186,8 +186,8 @@ class AsyncResponse : public AsyncResponseBase {
 // request as received from the network. Handlers registered via Router<Ser,
 // Deser>::Bind receive this type when no payload deserialization is needed.
 //
-// NOTE: options and payload are non-owning views into the receive buffer —
-// copy any data you need before the handler returns.
+// NOTE: options, payload and path params are non-owning views into the
+// receive buffer — copy any data you need before the handler returns.
 struct RawRequest {
   Code method;
   OptionsView options;
@@ -195,8 +195,16 @@ struct RawRequest {
 
   // Populated by CoapServer — not for direct construction by application code.
   RawRequest(Code method, OptionsView options, span<const std::byte> payload,
-             CoapServer& server, const Endpoint& sender, MessageType req_type,
-             uint16_t req_mid, const Token& token);
+             const coap_pp::PathParams& path_params, CoapServer& server,
+             const Endpoint& sender, MessageType req_type, uint16_t req_mid,
+             const Token& token);
+
+  // Placeholder values captured by the matched route: Get(i)/GetUint(i) for
+  // "{}" in path order, Tail() for a trailing "{*}". Non-owning views into the
+  // receive buffer — copy before the handler returns.
+  [[nodiscard]] const coap_pp::PathParams& PathParams() const {
+    return *path_params_;
+  }
 
   // Creates an AsyncResponse preloaded with the routing info for this request.
   // Store the returned handle; return it (or a copy) from the handler.
@@ -214,6 +222,7 @@ struct RawRequest {
   friend class ObservableBase;  // observer registration needs sender + token
   friend class UploadTransfer;  // RFC 7959 upload tracking needs the sender
 
+  const coap_pp::PathParams* path_params_;
   CoapServer* server_;
   Endpoint sender_;
   MessageType req_type_;
@@ -234,6 +243,15 @@ struct Request {
 
   const T& Body() const { return body_; }
 
+  // Placeholder values captured by the matched route: Get(i)/GetUint(i) for
+  // "{}" in path order, Tail() for a trailing "{*}". Non-owning views into the
+  // receive buffer — copy before the handler returns. The type is spelled
+  // coap_pp::PathParams here because this accessor shadows the unqualified
+  // name in class scope.
+  [[nodiscard]] const coap_pp::PathParams& PathParams() const {
+    return *path_params_;
+  }
+
   template <typename Ser = NoopSerializer>
   AsyncResponse<Ser> MakeAsync() const {
     return AsyncResponse<Ser>{*server_, sender_, req_type_, req_mid_, token_};
@@ -249,6 +267,7 @@ struct Request {
         options(base.options),
         payload(base.payload),
         body_(std::move(body)),
+        path_params_(base.path_params_),
         server_(base.server_),
         sender_(base.sender_),
         req_type_(base.req_type_),
@@ -256,6 +275,7 @@ struct Request {
         token_(base.token_) {}
 
   T body_;
+  const coap_pp::PathParams* path_params_;
   CoapServer* server_;
   Endpoint sender_;
   MessageType req_type_;

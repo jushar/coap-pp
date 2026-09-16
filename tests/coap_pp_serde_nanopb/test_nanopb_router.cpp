@@ -243,6 +243,31 @@ TEST_F(NanopbRouterTest, Post_EmptyPayload_DecodesAsDefaultMessage) {
   EXPECT_FLOAT_EQ(received.target, 0.0f);
 }
 
+// ── Path parameters through typed handlers ───────────────────────────────────
+
+// A typed handler bound via NanopbRouter::Bind must see the path parameters
+// captured from a "{}" route segment on the Request<T> it receives.
+TEST_F(NanopbRouterTest, Post_TypedHandler_ReceivesPathParam) {
+  std::string captured;
+
+  const std::array<Route, 1> routes{{
+      {codes::kPost, "/setpoint/{}",
+       NanopbRouter::Bind([&](const Request<SetpointRequest>& req) {
+         captured = *req.PathParams().Get(0);
+         return Response{codes::kChanged, SetpointResponse{.accepted = true}};
+       })},
+  }};
+  NanopbRouter router{"", routes};
+  server_.AddRouter(router);
+
+  const auto bytes = Encode(SetpointRequest{.sensor_id = 3, .target = 22.5f});
+  InjectRequest(MessageType::kNon, codes::kPost, 0x0008u, "/setpoint/outdoor",
+                bytes.View());
+
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  EXPECT_EQ(captured, "outdoor");
+}
+
 // ── Empty protobuf messages (zero fields) ────────────────────────────────────
 
 // A message with no fields has NanopbFields<T>::kMaxEncodedSize == 0. The
