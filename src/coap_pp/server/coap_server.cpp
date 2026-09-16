@@ -92,7 +92,7 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   if (!IsRequest(msg.code)) return;
 
   // Reconstruct the request URI path from Uri-Path options (logging only).
-  char path_buf[256];
+  char path_buf[64];
   const std::size_t path_len =
       JoinUriPath(msg.options, path_buf, sizeof(path_buf));
 
@@ -163,8 +163,8 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
     params.tail_ = PathTail{*tail_begin, msg.options.end()};
   }
 
-  RawRequest req{msg.code, msg.options,    msg.payload, params, *this,
-                 sender,   msg.type,       msg.message_id, msg.token};
+  RawRequest req{msg.code, msg.options, msg.payload,    params,   *this,
+                 sender,   msg.type,    msg.message_id, msg.token};
 
   // WireSender is called synchronously from within the handler so the
   // handler's local Response<T> is still alive when we serialize.
@@ -174,8 +174,9 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   const HandlerResult result = found_route->handler(req, wire_sender);
 
   if (result == HandlerResult::kAsync) {
-    detail::Log<LogLevel::kDebug>("%.*s: async response, sending empty ack if CON",
-                                  static_cast<int>(path_len), path_buf);
+    detail::Log<LogLevel::kDebug>(
+        "%.*s: async response, sending empty ack if CON",
+        static_cast<int>(path_len), path_buf);
 
     // Async: for CON send an empty ACK immediately to stop client
     // retransmissions. The actual reply arrives later via
