@@ -47,6 +47,15 @@ function(COAP_PP_NANOPB_GENERATE_CPP SRCS HDRS FIELDS_HDRS)
     set(${SRCS} ${${SRCS}} PARENT_SCOPE)
     set(${HDRS} ${${HDRS}} PARENT_SCOPE)
 
+    # When RELPATH is given it is the module root the protos import each other through, so it must
+    # be on the plugin's include path too; without it a proto carrying a module-root-relative
+    # import fails to resolve here even though nanopb_generate_cpp() handled it fine.
+    set(_fields_include_dirs)
+    if(_ARG_RELPATH)
+        get_filename_component(ABS_RELPATH ${_ARG_RELPATH} ABSOLUTE)
+        list(APPEND _fields_include_dirs "-I${ABS_RELPATH}")
+    endif()
+
     # Run the coap_pp_fields plugin for each proto file
     set(_fields_hdrs)
     foreach(FIL ${_ARG_UNPARSED_ARGUMENTS})
@@ -62,6 +71,7 @@ function(COAP_PP_NANOPB_GENERATE_CPP SRCS HDRS FIELDS_HDRS)
             COMMAND "${PROTOBUF_PROTOC_EXECUTABLE}"
                     "--plugin=protoc-gen-coap_pp_fields=${_COAP_PP_FIELDS_PLUGIN}"
                     "--coap_pp_fields_out=${CMAKE_CURRENT_BINARY_DIR}"
+                    ${_fields_include_dirs}
                     "-I${ABS_PATH}"
                     "${ABS_FIL}"
             DEPENDS "${ABS_FIL}" "${_COAP_PP_FIELDS_PLUGIN}"
