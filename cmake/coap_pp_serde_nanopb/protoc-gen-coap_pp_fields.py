@@ -11,8 +11,19 @@ Generates <output_dir>/foo.coap_pp_fields.hpp containing one specialization per
 message type defined in foo.proto.
 """
 
+import re
 import sys
 from google.protobuf.compiler import plugin_pb2 as plugin
+
+
+def identifier_safe(text):
+    """
+    Replace every character that cannot appear in a C identifier with an underscore.
+
+    Proto file names may legally contain characters (notably '-') that are invalid in a macro
+    name, which would otherwise emit a broken include guard.
+    """
+    return re.sub(r"\W", "_", text, flags=re.ASCII)
 
 
 def nanopb_type_name(msg, parent=""):
@@ -57,8 +68,8 @@ def generate_fields_header(proto_file):
     if not messages:
         return None, None
 
-    pkg_upper = pkg_prefix.upper()
-    base_upper = bare_base.upper()
+    pkg_upper = identifier_safe(pkg_prefix).upper()
+    base_upper = identifier_safe(bare_base).upper()
     guard = f"PB_{pkg_upper + '_' if pkg_upper else ''}{base_upper}_COAP_PP_FIELDS_HPP_INCLUDED"
 
     lines = [
