@@ -16,6 +16,8 @@
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/server/coap_server.hpp"
 #include "coap_pp/server/resource.hpp"
+#include "coap_pp/testing/invoke.hpp"
+#include "coap_pp/testing/request_builder.hpp"
 #include "coap_pp_serde_json/deserializer.hpp"
 #include "coap_pp_serde_json/router.hpp"
 #include "coap_pp_serde_json/serializer.hpp"
@@ -289,6 +291,77 @@ TEST_F(JsonRouterTest, Post_EmptyJsonObject_DecodesAsDefaultMessage) {
   EXPECT_EQ(wire.code, codes::kChanged);
   EXPECT_EQ(received.sensor_id, 0u);
   EXPECT_FLOAT_EQ(received.target, 0.0f);
+}
+
+// ── Unit-testing handlers without a server (coap_pp/testing)
+// ──────────────────
+
+// A controller as an application would write it; the tests below exercise it
+// the way a library user would, without CoapServer/Messenger/transport.
+class SetpointController {
+ public:
+  // Route: PUT /sensors/{}/setpoint
+  Response<SetpointResponse> HandleSetpoint(
+      const Request<SetpointRequest>& req) {
+    const auto sensor = req.PathParams().GetUint(0);
+    if (!sensor || *sensor != req.Body().sensor_id) {
+      return Response{codes::kBadRequest, SetpointResponse{false, "mismatch"}};
+    }
+    last_target_ = req.Body().target;
+    return Response{codes::kChanged, SetpointResponse{true, "ok"}};
+  }
+
+  float last_target_{0.0f};
+};
+
+TEST(JsonRouterUnitTest, DirectCall_TypedRequest) {
+  SetpointController ctrl;
+  testing::RequestBuilder b{codes::kPut};
+  b.SetUriPath("/sensors/7/setpoint").MatchRoute("", "/sensors/{}/setpoint");
+
+  const auto resp = ctrl.HandleSetpoint(
+      b.Build(SetpointRequest{.sensor_id = 7, .target = 2.5f}));
+
+  EXPECT_EQ(resp.code, codes::kChanged);
+  EXPECT_TRUE(resp.payload.accepted);
+  EXPECT_FLOAT_EQ(ctrl.last_target_, 2.5f);
+}
+
+TEST(JsonRouterUnitTest, InvokeHandler_ThroughBindGlue) {
+  SetpointController ctrl;
+  const RequestHandler handler =
+      JsonRouter::Bind<&SetpointController::HandleSetpoint>(&ctrl);
+
+  testing::RequestBuilder b{codes::kPut};
+  b.SetUriPath("/sensors/7/setpoint")
+      .MatchRoute("", "/sensors/{}/setpoint")
+      .SetPayload(R"({"sensor_id": 8, "target": 1.0})");
+  const auto out = testing::InvokeHandler(handler, b.Build());
+
+  ASSERT_TRUE(out.response.has_value());
+  EXPECT_EQ(out.response->code, codes::kBadRequest);
+  EXPECT_EQ(out.response->content_format, ContentFormat::kJson);
+  const auto body =
+      testing::Decode<SetpointResponse, JsonDeserializer>(*out.response);
+  ASSERT_TRUE(body.has_value());
+  EXPECT_FALSE(body->accepted);
+  EXPECT_EQ(body->message, "mismatch");
+}
+
+TEST(JsonRouterUnitTest, InvokeHandler_InvalidJson_BadRequest) {
+  SetpointController ctrl;
+  const RequestHandler handler =
+      JsonRouter::Bind<&SetpointController::HandleSetpoint>(&ctrl);
+
+  testing::RequestBuilder b{codes::kPut};
+  b.SetUriPath("/sensors/7/setpoint")
+      .MatchRoute("", "/sensors/{}/setpoint")
+      .SetPayload("{not json");
+  const auto out = testing::InvokeHandler(handler, b.Build());
+
+  ASSERT_TRUE(out.response.has_value());
+  EXPECT_EQ(out.response->code, codes::kBadRequest);
+  EXPECT_TRUE(out.response->Payload().empty());
 }
 
 }  // namespace
