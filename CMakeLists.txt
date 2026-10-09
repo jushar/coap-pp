@@ -37,7 +37,6 @@ add_library(coap-pp STATIC
     src/coap_pp/server/blockwise.cpp
     src/coap_pp/server/coap_server.cpp
     src/coap_pp/server/observable.cpp
-    src/coap_pp/server/resource.cpp
 )
 
 target_compile_features(coap-pp PUBLIC cxx_std_17)

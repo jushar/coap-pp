@@ -15,6 +15,7 @@
 
 #include "coap_pp/option_number.hpp"
 #include "coap_pp/pdu/option.hpp"
+#include "coap_pp/util/path_match.hpp"
 #include "coap_pp/util/static_vector.hpp"
 
 #ifndef COAP_PP_MAX_PATH_PARAMS
@@ -157,9 +158,22 @@ class PathParams {
   // route has none. A "{*}" does not occupy a Get(i) index.
   [[nodiscard]] const PathTail& Tail() const { return tail_; }
 
- private:
-  friend class CoapServer;  // only the dispatcher fills it
+  // Matches the request's Uri-Path options against base_path + pattern and,
+  // on success, replaces the captured values and tail with the new ones. On a
+  // mismatch the params are cleared. options must outlive *this. Used by
+  // CoapServer during dispatch and by testing::RequestBuilder.
+  bool Match(std::string_view base_path, std::string_view pattern,
+             const OptionsView& options) {
+    std::optional<OptionsIterator> tail_begin;
+    const bool matched =
+        detail::MatchRoute(base_path, pattern, options, values_, tail_begin);
+    if (!matched) values_.clear();
+    tail_ = matched && tail_begin ? PathTail{*tail_begin, options.end()}
+                                  : PathTail{};
+    return matched;
+  }
 
+ private:
   StaticVector<std::string_view, kMaxPathParams> values_;
   PathTail tail_;
 };

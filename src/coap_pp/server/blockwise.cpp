@@ -137,11 +137,12 @@ UploadTransfer::Status UploadTransfer::Accept(const RawRequest& req) {
   // NUM=0 (re)starts a transfer, superseding any stale state (§2.5).
   const bool restart = block->num == 0;
   const bool in_sequence = phase_ == Phase::kReceiving &&
-                           client_ == req.sender_ &&
+                           client_ == req.Context().sender &&
                            offset == expected_offset_;
   // Retransmission of the most recent block (lost ACK): re-accept without
   // advancing, so offset-based sinks stay idempotent.
-  const bool duplicate = phase_ != Phase::kIdle && client_ == req.sender_ &&
+  const bool duplicate = phase_ != Phase::kIdle &&
+                         client_ == req.Context().sender &&
                          offset == prev_offset_ &&
                          offset + req.payload.size() == expected_offset_;
   if (!restart && !in_sequence && !duplicate) {
@@ -153,7 +154,7 @@ UploadTransfer::Status UploadTransfer::Accept(const RawRequest& req) {
       BlockOption{block->num, block->more, std::min(block->szx, preferred_szx_)};
   offset_ = offset;
   if (restart) {
-    client_ = req.sender_;
+    client_ = req.Context().sender;
   }
   if (!duplicate) {
     prev_offset_ = offset;

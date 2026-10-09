@@ -12,6 +12,8 @@
 #include "coap_pp/pdu/serialize.hpp"
 #include "coap_pp/server/coap_server.hpp"
 #include "coap_pp/server/resource.hpp"
+#include "coap_pp/testing/invoke.hpp"
+#include "coap_pp/testing/request_builder.hpp"
 #include "coap_pp_serde_nanopb/deserializer.hpp"
 #include "coap_pp_serde_nanopb/router.hpp"
 #include "coap_pp_serde_nanopb/serializer.hpp"
@@ -312,6 +314,32 @@ TEST_F(NanopbRouterTest, Post_EmptyRequestAndResponse_RoundTrips) {
   const auto wire = transport_.DeserializeFirstResponse();
   EXPECT_EQ(wire.code, codes::kChanged);
   EXPECT_TRUE(wire.payload.empty());
+}
+
+// ── Unit-testing handlers without a server (coap_pp/testing)
+// ──────────────────
+
+TEST(NanopbRouterUnitTest, InvokeHandler_ThroughBindGlue) {
+  const RequestHandler handler =
+      NanopbRouter::Bind([](const Request<SetpointRequest>& req) {
+        return Response{codes::kChanged,
+                        SetpointResponse{.accepted = req.Body().target > 0.0f,
+                                         .message = "ok"}};
+      });
+
+  const auto bytes = Encode(SetpointRequest{.sensor_id = 1, .target = 3.0f});
+  testing::RequestBuilder b{codes::kPost};
+  b.SetPayload(bytes.View());
+  const auto out = testing::InvokeHandler(handler, b.Build());
+
+  ASSERT_TRUE(out.response.has_value());
+  EXPECT_EQ(out.response->code, codes::kChanged);
+  EXPECT_EQ(out.response->content_format, ContentFormat::kOctetStream);
+  const auto body =
+      testing::Decode<SetpointResponse, NanopbDeserializer>(*out.response);
+  ASSERT_TRUE(body.has_value());
+  EXPECT_TRUE(body->accepted);
+  EXPECT_STREQ(body->message, "ok");
 }
 
 }  // namespace

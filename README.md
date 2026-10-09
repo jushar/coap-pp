@@ -473,6 +473,44 @@ Behaviour details:
 
 See [examples/blockwise/blockwise.cpp](examples/blockwise/blockwise.cpp) for a complete working example of all three (`GET /image`, `PUT /firmware`, `POST /config`), and [examples/blockwise/blockwise_client.py](examples/blockwise/blockwise_client.py) for an aiocoap client driving them.
 
+## Unit-testing your handlers
+
+The header-only helpers in `coap_pp/testing/` let you test handlers without a `CoapServer`, `Messenger` or transport. They don't depend on a test framework. Unlike the rest of the library, they use the heap (they're meant for host-side tests).
+
+- `testing::RequestBuilder` builds `RawRequest` / `Request<T>` objects. Options are wire-encoded exactly as the server would see them, `MatchRoute()` captures path parameters (including `{*}` tails) with the server's own matcher, and deferred responses from `MakeAsync().Send()` are recorded by `Responder()`.
+- `testing::InvokeHandler` calls a handler produced by `Router::Bind` the way the server does after route matching. That way, the Bind glue gets tested too: payload deserialization (4.00 on failure), response serialization and Content-Format defaulting.
+- `testing::Decode<T, Deserializer>` turns a captured payload back into `T`.
+
+```cpp
+#include "coap_pp/testing/invoke.hpp"
+#include "coap_pp/testing/request_builder.hpp"
+
+// 1. Call the handler directly with an already-deserialized body.
+testing::RequestBuilder b{codes::kPut};
+b.SetUriPath("/sensors/7/setpoint").MatchRoute("", "/sensors/{}/setpoint");
+auto resp = ctrl.HandleSetpoint(b.Build(SetpointRequest{.sensor_id = 7, .target = 2.5f}));
+EXPECT_EQ(resp.code, codes::kChanged);
+
+// 2. Go through the Bind glue with a raw payload.
+auto handler = JsonRouter::Bind<&SetpointController::HandleSetpoint>(&ctrl);
+b.SetPayload(R"({"sensor_id": 7, "target": 2.5})");
+auto out = testing::InvokeHandler(handler, b.Build());
+ASSERT_TRUE(out.response.has_value());
+EXPECT_EQ(out.response->code, codes::kChanged);
+EXPECT_TRUE((testing::Decode<SetpointResponse, JsonDeserializer>(*out.response))->accepted);
+
+// 3. Async handlers: out.result == HandlerResult::kAsync and out.response is
+//    empty; the deferred response lands in the builder's responder.
+pending.Send(Response{codes::kContent, reading});
+EXPECT_EQ(b.Responder().responses.back().response.code, codes::kContent);
+```
+
+`SetContext()` sets the sender, message type, message ID and token, which handlers can read via `req.Context()`.
+
+The builder copies everything you pass to it, but built requests are views into the builder, so keep it alive while you use the request. Routing itself (404/405, duplicate detection, ACK handling) is the server's job; test it end-to-end against a `CoapServer` if you need to.
+
+Tip: keep handlers thin. Parse the request and delegate to plain domain functions, which you can test without any CoAP types at all.
+
 ## Integrating via CMake FetchContent
 
 ```cmake
