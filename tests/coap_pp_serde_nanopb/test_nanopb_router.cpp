@@ -18,7 +18,6 @@
 #include "coap_pp_serde_nanopb/router.hpp"
 #include "coap_pp_serde_nanopb/serializer.hpp"
 #include "fakes/fake_transport.hpp"
-#include "serde_test.coap_pp_fields.hpp"
 #include "serde_test.pb.h"
 
 namespace coap_pp {
@@ -32,7 +31,7 @@ namespace {
 // valid bytes without involving std::vector.
 template <typename T>
 struct Encoded {
-  std::array<std::byte, NanopbFields<T>::kMaxEncodedSize> buf{};
+  std::array<std::byte, nanopb::MessageDescriptor<T>::size> buf{};
   std::size_t size{0};
   span<const std::byte> View() const { return {buf.data(), size}; }
 };
@@ -272,7 +271,7 @@ TEST_F(NanopbRouterTest, Post_TypedHandler_ReceivesPathParam) {
 
 // ── Empty protobuf messages (zero fields) ────────────────────────────────────
 
-// A message with no fields has NanopbFields<T>::kMaxEncodedSize == 0. The
+// A message with no fields has nanopb::MessageDescriptor<T>::size == 0. The
 // serializer must special-case this to produce a zero-length payload instead
 // of rejecting the (zero-size) buffer as too small.
 TEST_F(NanopbRouterTest, Get_EmptyResponse_SerializesToZeroLengthPayload) {

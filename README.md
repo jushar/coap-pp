@@ -214,37 +214,28 @@ auto ep = UdpIpSlipTransport::MakeEndpoint({192, 168, 1, 2}, 5683);
 
 The `coap-pp-serde-nanopb` layer automatically deserializes protobuf request payloads and serializes protobuf response payloads using [NanoPB](https://jpa.kapsi.fi/nanopb/).
 
-**1. Generate `NanopbFields` specializations from your proto file:**
+**1. Generate your proto file with nanopb's C++ descriptors:**
 
-Use `coap_pp_nanopb_generate_cpp` in your `CMakeLists.txt` instead of the bare `nanopb_generate_cpp`. It runs the bundled `protoc-gen-coap_pp_fields` plugin to produce a `<name>.coap_pp_fields.hpp` header alongside the usual `<name>.pb.h`:
+The library provides a CMake helper named `coap_pp_nanopb_generate_cpp` as a drop-in replacement for `nanopb_generate_cpp` to emit the required C++ descriptors.
+All it does it passing `--cpp-descriptors` to the standard nanopb generator.
 
 ```cmake
-coap_pp_nanopb_generate_cpp(PROTO_SRCS PROTO_HDRS PROTO_FIELDS my_message.proto)
+coap_pp_nanopb_generate_cpp(PROTO_SRCS PROTO_HDRS my_message.proto)
 
-add_executable(my_app main.cpp ${PROTO_SRCS} ${PROTO_FIELDS})
+add_executable(my_app main.cpp ${PROTO_SRCS})
 target_include_directories(my_app PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(my_app PRIVATE coap-pp-serde-nanopb)
 ```
 
-Then include the generated header — it contains a `NanopbFields` specialization for every message in the file:
+Plain `nanopb_generate_cpp` works as well if `--cpp-descriptors` is part of `NANOPB_OPTIONS` (or nanopb is found via `find_package(Nanopb REQUIRED COMPONENTS cpp-descriptors)`).
+
+Then include the generated header as usual:
 
 ```cpp
-#include "my_message.coap_pp_fields.hpp"  // auto-generated; also includes my_message.pb.h
-```
-
-<details>
-<summary>Manual specialization (without the plugin)</summary>
-
-```cpp
-#include "coap_pp_serde_nanopb/router.hpp"
 #include "my_message.pb.h"
-
-template <>
-struct coap_pp::NanopbFields<MyMessage> {
-    static constexpr const pb_msgdesc_t* kFields = MyMessage_fields;
-};
 ```
-</details>
+
+Response messages must have a bounded maximum encoded size (e.g. `max_size` set for strings via a `.options` file), since the serializer checks the output buffer against `MessageDescriptor<T>::size`.
 
 **2. Write a typed handler — the payload is decoded before your handler runs:**
 

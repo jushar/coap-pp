@@ -5,14 +5,13 @@
 #ifndef COAP_PP_SERDE_NANOPB_DESERIALIZER_HPP
 #define COAP_PP_SERDE_NANOPB_DESERIALIZER_HPP
 
+#include <pb.h>
 #include <pb_decode.h>
 
 #include <cstddef>
 #include <optional>
 
 #include "coap_pp/util/span.hpp"
-#include "coap_pp_serde_nanopb/fields.hpp"
-#include "pb.h"
 
 namespace coap_pp {
 
@@ -22,7 +21,7 @@ struct NanopbDeserializer final {
     pb_istream_t stream = pb_istream_from_buffer(
         reinterpret_cast<const pb_byte_t*>(payload.data()), payload.size());
     T out{};
-    if (pb_decode(&stream, NanopbFields<T>::kFields, &out)) {
+    if (pb_decode(&stream, nanopb::MessageDescriptor<T>::fields(), &out)) {
       return out;
     }
 

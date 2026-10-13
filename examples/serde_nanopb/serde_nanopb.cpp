@@ -14,7 +14,7 @@
 #include "coap_pp/server/observable.hpp"
 #include "coap_pp_serde_nanopb/router.hpp"
 #include "coap_pp_transport_posix/udp_transport.hpp"
-#include "serde_nanopb.coap_pp_fields.hpp"
+#include "serde_nanopb.pb.h"
 
 using namespace std::chrono_literals;
 using namespace coap_pp;
