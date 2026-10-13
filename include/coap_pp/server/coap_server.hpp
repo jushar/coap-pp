@@ -9,6 +9,7 @@
 #include <cstdint>
 
 #include "coap_pp/messaging/messenger.hpp"
+#include "coap_pp/server/resource.hpp"
 #include "coap_pp/server/responder_if.hpp"
 #include "coap_pp/server/router_base.hpp"
 #include "coap_pp/util/intrusive_list.hpp"
@@ -42,7 +43,6 @@ class ObservableBase;
 //   // Retransmitted non-idempotent requests (POST) are detected and not
 //   // re-executed (§4.5); duplicate CONs get an empty ACK, duplicate NONs
 //   // are dropped.
-//   // Unregistered paths -> 4.04 Not Found.
 //   // "{}" route segments capture path parameters: a route "/config/{}"
 //   // matches "/config/foo" and the handler reads
 //   // req.PathParams().Get(0) == "foo".
@@ -60,6 +60,18 @@ class CoapServer : private MessageHandlerIF, private ResponderIF {
   // server. Panics if a route path is malformed (non-empty path not starting
   // with '/') or declares more than kMaxPathParams "{}" placeholders.
   void AddRouter(RouterBase& router);
+
+  // Replaces the handler invoked when no route's path matches the request
+  // (default: empty 4.04 reply). Bind it like a route handler, e.g.
+  // MyRouter::Bind(...), to get the same payload (de)serialization and async
+  // semantics. The handler chooses the response code itself — note
+  // Response<T> defaults to 2.05, so set codes::kNotFound explicitly unless
+  // you mean to answer differently. Path parameters are empty. Unlike route
+  // handlers it is exempt from §4.5 duplicate detection, so a retransmitted
+  // request re-runs it and the reply is re-sent. A path match with the wrong
+  // method still yields 4.05 without calling it. An empty handler restores
+  // the default.
+  void SetNotFoundHandler(RequestHandler handler);
 
  private:
   // MessageHandlerIF
@@ -106,6 +118,8 @@ class CoapServer : private MessageHandlerIF, private ResponderIF {
 
   Messenger& messenger_;
   IntrusiveList<RouterBase> routers_{};
+  // Initialised to the default 4.04 handler by the constructor.
+  RequestHandler not_found_handler_;
   uint16_t next_mid_{1u};
   IntrusiveList<ObservableBase> observables_{};
   RingBuffer<SeenRequest, kDuplicateCacheSize> seen_requests_{};
