@@ -95,13 +95,10 @@ class ObservableBase : public IntrusiveListNode<ObservableBase> {
   // requester per its Observe option; on registration, adds the Observe
   // option (occupying one of the kMaxResponseOptions slots) to options so the
   // response doubles as the initial notification. Returns true when the
-  // requester is an observer after the call.
+  // requester is an observer after the call. Accepts Request<T> as well.
   bool HandleGet(const RawRequest& req, ResponseOptions& options) {
-    return HandleObserve(req.options, req.sender_, req.token_, options);
-  }
-  template <typename T>
-  bool HandleGet(const Request<T>& req, ResponseOptions& options) {
-    return HandleObserve(req.options, req.sender_, req.token_, options);
+    return HandleObserve(req.options, req.Context().sender,
+                         req.Context().token, options);
   }
 
   // Send resp as a notification to every registered observer. 2.xx codes

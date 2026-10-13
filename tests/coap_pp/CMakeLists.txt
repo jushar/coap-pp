@@ -9,6 +9,7 @@ add_executable(coap-pp-tests
     server/test_blockwise.cpp
     server/test_observe.cpp
     server/test_server.cpp
+    testing/test_request_builder.cpp
     transport/test_endpoint.cpp
     util/test_inplace_function.cpp
     util/test_intrusive_list.cpp

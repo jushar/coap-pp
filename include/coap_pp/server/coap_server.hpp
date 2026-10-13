@@ -9,6 +9,7 @@
 #include <cstdint>
 
 #include "coap_pp/messaging/messenger.hpp"
+#include "coap_pp/server/responder_if.hpp"
 #include "coap_pp/server/router_base.hpp"
 #include "coap_pp/util/intrusive_list.hpp"
 #include "coap_pp/util/ring_buffer.hpp"
@@ -49,7 +50,7 @@ class ObservableBase;
 //   // Deserialization failure -> 4.00 Bad Request.
 //   // Async handlers return AsyncResponse from req.MakeAsync() instead of
 //   Response.
-class CoapServer : private MessageHandlerIF {
+class CoapServer : private MessageHandlerIF, private ResponderIF {
  public:
   // Calls messenger.SetHandler(*this) immediately.
   explicit CoapServer(Messenger& messenger);
@@ -67,8 +68,13 @@ class CoapServer : private MessageHandlerIF {
   void OnConTimeout(const Endpoint& destination, uint16_t message_id) override;
   void OnRst(const Endpoint& sender, uint16_t message_id) override;
 
-  // Called by AsyncResponse::Send() to deliver a deferred reply and by
-  // ObservableBase::Notify() to deliver notifications.
+  // ResponderIF — called by AsyncResponse::Send() to deliver a deferred reply.
+  void SendDeferredResponse(const Endpoint& to, MessageType req_type,
+                            uint16_t req_mid, const Token& token,
+                            const WireResponse& resp) override;
+
+  // Delivers deferred replies and, via ObservableBase::Notify(),
+  // notifications.
   // Originally-CON requests: reply is a new CON with a fresh MID.
   // Originally-NON requests: reply is a NON with a fresh MID.
   // When observe_seq is non-null an Observe option with that value is added
@@ -96,7 +102,6 @@ class CoapServer : private MessageHandlerIF {
 
   bool IsDuplicate(const Endpoint& sender, uint16_t message_id) const;
 
-  friend class AsyncResponseBase;
   friend class ObservableBase;
 
   Messenger& messenger_;

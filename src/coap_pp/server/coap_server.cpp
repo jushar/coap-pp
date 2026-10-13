@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <optional>
 #include <string_view>
 
 #include "coap_pp/content_formats.hpp"
@@ -102,16 +101,15 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   // and capture its value, a trailing "{*}" matches all remaining segments.
   // A path-only match (wrong method) yields 4.05; no path match yields 4.04.
   //
-  // params is overwritten by every path-level match, but the method match
-  // breaks out immediately, so on exit it always belongs to found_route.
+  // params (values and "{*}" tail) is overwritten by every match attempt, but
+  // the method match breaks out immediately, so on exit it always belongs to
+  // found_route.
   PathParams params;
-  std::optional<OptionsIterator> tail_begin;
   bool path_matched = false;
   const Route* found_route = nullptr;
   for (const RouterBase& router : routers_) {
     for (const auto& route : router.GetRoutes()) {
-      if (!detail::MatchRoute(router.GetBasePath(), route.path, msg.options,
-                              params.values_, tail_begin)) {
+      if (!params.Match(router.GetBasePath(), route.path, msg.options)) {
         continue;
       }
       path_matched = true;
@@ -157,14 +155,8 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   detail::Log<LogLevel::kDebug>("%.*s: Incoming request",
                                 static_cast<int>(path_len), path_buf);
 
-  // Publish the "{*}" capture only once the route is settled, so a pattern
-  // route rejected for its method cannot leave a stale tail behind.
-  if (tail_begin) {
-    params.tail_ = PathTail{*tail_begin, msg.options.end()};
-  }
-
-  RawRequest req{msg.code, msg.options, msg.payload,    params,   *this,
-                 sender,   msg.type,    msg.message_id, msg.token};
+  const RequestContext ctx{this, sender, msg.type, msg.message_id, msg.token};
+  const RawRequest req{msg.code, msg.options, msg.payload, params, ctx};
 
   // WireSender is called synchronously from within the handler so the
   // handler's local Response<T> is still alive when we serialize.
@@ -185,6 +177,12 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
       SendEmptyAck(sender, msg.message_id);
     }
   }
+}
+
+void CoapServer::SendDeferredResponse(const Endpoint& to, MessageType req_type,
+                                      uint16_t req_mid, const Token& token,
+                                      const WireResponse& resp) {
+  SendResponse(to, req_type, req_mid, token, false, resp);
 }
 
 bool CoapServer::IsDuplicate(const Endpoint& sender,
