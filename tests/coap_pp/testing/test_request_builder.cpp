@@ -102,10 +102,9 @@ TEST_F(RequestBuilderTest, Build_ExposesMethodOptionsAndPayload) {
   EXPECT_EQ(segments[1], "data");
 }
 
-TEST_F(RequestBuilderTest, MatchRoute_FillsPathParamsAndTail) {
+TEST_F(RequestBuilderTest, RoutePattern_FillsPathParamsAndTail) {
   testing::RequestBuilder b{codes::kGet};
-  b.SetUriPath("/api/files/7/etc/config.json")
-      .MatchRoute("/api", "/files/{}/{*}");
+  b.SetUriPath("/api/files/7/etc/config.json", "/api/files/{}/{*}");
 
   const RawRequest req = b.Build();
 
@@ -116,9 +115,9 @@ TEST_F(RequestBuilderTest, MatchRoute_FillsPathParamsAndTail) {
   EXPECT_STREQ(buf.data(), "etc/config.json");
 }
 
-TEST_F(RequestBuilderTest, MatchRoute_MismatchPanics) {
+TEST_F(RequestBuilderTest, RoutePattern_MismatchPanics) {
   testing::RequestBuilder b{codes::kGet};
-  b.SetUriPath("/api/other").MatchRoute("/api", "/files/{}");
+  b.SetUriPath("/api/other", "/api/files/{}");
 
   EXPECT_THROW((void)b.Build(), std::runtime_error);
 }
@@ -127,11 +126,11 @@ TEST_F(RequestBuilderTest, Build_CopiesInputs) {
   testing::RequestBuilder b{codes::kGet};
   {
     std::string path = "/items/5";
+    std::string pattern = "/items/{}";
     std::string query = "q=1";
-    b.SetUriPath(path)
-        .MatchRoute(std::string{"/items"}, std::string{"/{}"})
-        .AddOption(OptionNumber::kUriQuery, query);
+    b.SetUriPath(path, pattern).AddOption(OptionNumber::kUriQuery, query);
     path.assign(path.size(), 'x');
+    pattern.assign(pattern.size(), 'x');
     query.assign(query.size(), 'x');
   }
 
@@ -143,7 +142,7 @@ TEST_F(RequestBuilderTest, Build_CopiesInputs) {
   EXPECT_EQ(std::get<std::string_view>(query->value), "q=1");
 }
 
-TEST_F(RequestBuilderTest, NoMatchRoute_EmptyPathParams) {
+TEST_F(RequestBuilderTest, NoRoutePattern_EmptyPathParams) {
   testing::RequestBuilder b{codes::kGet};
   b.SetUriPath("/items/5");
 
@@ -155,7 +154,7 @@ TEST_F(RequestBuilderTest, NoMatchRoute_EmptyPathParams) {
 
 TEST_F(RequestBuilderTest, TypedBuild_CallsHandlerDirectly) {
   testing::RequestBuilder b{codes::kPut};
-  b.SetUriPath("/factor/3").MatchRoute("", "/factor/{}");
+  b.SetUriPath("/factor/3", "/factor/{}");
 
   const auto handler = [](const Request<uint32_t>& req) {
     return Response{codes::kChanged, req.Body() * *req.PathParams().GetUint(0)};

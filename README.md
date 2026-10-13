@@ -477,7 +477,7 @@ See [examples/blockwise/blockwise.cpp](examples/blockwise/blockwise.cpp) for a c
 
 The header-only helpers in `coap_pp/testing/` let you test handlers without a `CoapServer`, `Messenger` or transport. They don't depend on a test framework. Unlike the rest of the library, they use the heap (they're meant for host-side tests).
 
-- `testing::RequestBuilder` builds `RawRequest` / `Request<T>` objects. Options are wire-encoded exactly as the server would see them, `MatchRoute()` captures path parameters (including `{*}` tails) with the server's own matcher, and deferred responses from `MakeAsync().Send()` are recorded by `Responder()`.
+- `testing::RequestBuilder` builds `RawRequest` / `Request<T>` objects. Options are wire-encoded exactly as the server would see them, `SetUriPath(path, route_pattern)` captures path parameters (including `{*}` tails) with the server's own matcher (the pattern is the full route: router base path plus route path), and deferred responses from `MakeAsync().Send()` are recorded by `Responder()`.
 - `testing::InvokeHandler` calls a handler produced by `Router::Bind` the way the server does after route matching. That way, the Bind glue gets tested too: payload deserialization (4.00 on failure), response serialization and Content-Format defaulting.
 - `testing::Decode<T, Deserializer>` turns a captured payload back into `T`.
 
@@ -487,7 +487,7 @@ The header-only helpers in `coap_pp/testing/` let you test handlers without a `C
 
 // 1. Call the handler directly with an already-deserialized body.
 testing::RequestBuilder b{codes::kPut};
-b.SetUriPath("/sensors/7/setpoint").MatchRoute("", "/sensors/{}/setpoint");
+b.SetUriPath("/sensors/7/setpoint", "/sensors/{}/setpoint");
 auto resp = ctrl.HandleSetpoint(b.Build(SetpointRequest{.sensor_id = 7, .target = 2.5f}));
 EXPECT_EQ(resp.code, codes::kChanged);
 

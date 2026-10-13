@@ -317,7 +317,7 @@ class SetpointController {
 TEST(JsonRouterUnitTest, DirectCall_TypedRequest) {
   SetpointController ctrl;
   testing::RequestBuilder b{codes::kPut};
-  b.SetUriPath("/sensors/7/setpoint").MatchRoute("", "/sensors/{}/setpoint");
+  b.SetUriPath("/sensors/7/setpoint", "/sensors/{}/setpoint");
 
   const auto resp = ctrl.HandleSetpoint(
       b.Build(SetpointRequest{.sensor_id = 7, .target = 2.5f}));
@@ -333,8 +333,7 @@ TEST(JsonRouterUnitTest, InvokeHandler_ThroughBindGlue) {
       JsonRouter::Bind<&SetpointController::HandleSetpoint>(&ctrl);
 
   testing::RequestBuilder b{codes::kPut};
-  b.SetUriPath("/sensors/7/setpoint")
-      .MatchRoute("", "/sensors/{}/setpoint")
+  b.SetUriPath("/sensors/7/setpoint", "/sensors/{}/setpoint")
       .SetPayload(R"({"sensor_id": 8, "target": 1.0})");
   const auto out = testing::InvokeHandler(handler, b.Build());
 
@@ -354,8 +353,7 @@ TEST(JsonRouterUnitTest, InvokeHandler_InvalidJson_BadRequest) {
       JsonRouter::Bind<&SetpointController::HandleSetpoint>(&ctrl);
 
   testing::RequestBuilder b{codes::kPut};
-  b.SetUriPath("/sensors/7/setpoint")
-      .MatchRoute("", "/sensors/{}/setpoint")
+  b.SetUriPath("/sensors/7/setpoint", "/sensors/{}/setpoint")
       .SetPayload("{not json");
   const auto out = testing::InvokeHandler(handler, b.Build());
 

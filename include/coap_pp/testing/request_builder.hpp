@@ -37,7 +37,7 @@ namespace coap_pp::testing {
 // (MakeAsync().Send()) are recorded by Responder().
 //
 //   testing::RequestBuilder b{codes::kPut};
-//   b.SetUriPath("/api/config/42").MatchRoute("/api", "/config/{}");
+//   b.SetUriPath("/api/config/42", "/api/config/{}");
 //   b.SetPayload(R"({"target": 21.5})");
 //
 //   auto resp = ctrl.HandlePut(b.Build(Setpoint{21.5f}));  // direct call
@@ -56,6 +56,7 @@ class RequestBuilder {
   RequestBuilder& operator=(RequestBuilder&&) = delete;
 
   // Adds one Uri-Path option per segment of path ("/a/b" → "a", "b").
+  // PathParams() stays empty.
   RequestBuilder& SetUriPath(std::string_view path) {
     if (!path.empty() && path.front() == '/') path.remove_prefix(1);
     while (!path.empty()) {
@@ -65,6 +66,18 @@ class RequestBuilder {
                                              : path.substr(slash + 1);
     }
     return *this;
+  }
+
+  // As above, and fills PathParams() by matching the Uri-Path against
+  // route_pattern like CoapServer does: "{}" segments are captured for
+  // Get(i)/GetUint(i), a trailing "{*}" for Tail(). route_pattern is the full
+  // route, i.e. the router's base path followed by the route's path, e.g.
+  //   SetUriPath("/api/files/7/a.txt", "/api/files/{}/{*}")
+  // Build() panics if path does not match route_pattern.
+  RequestBuilder& SetUriPath(std::string_view path,
+                             std::string_view route_pattern) {
+    route_pattern_ = std::string{route_pattern};
+    return SetUriPath(path);
   }
 
   // Same overload set as OptionList::Add; values are copied. Options may be
@@ -96,15 +109,6 @@ class RequestBuilder {
     return *this;
   }
 
-  // Fills PathParams() by matching the Uri-Path against base_path + route_path
-  // like CoapServer does, including a trailing "{*}" for PathParams().Tail().
-  // Build() panics if the Uri-Path does not match.
-  RequestBuilder& MatchRoute(std::string_view base_path,
-                             std::string_view route_path) {
-    route_ = RoutePattern{std::string{base_path}, std::string{route_path}};
-    return *this;
-  }
-
   // Sender, message type, message ID and token of the request. The responder
   // field is ignored: deferred responses always go to Responder().
   RequestBuilder& SetContext(const RequestContext& ctx) {
@@ -120,8 +124,8 @@ class RequestBuilder {
   [[nodiscard]] RawRequest Build() {
     const OptionsView options = EncodeOptions();
     params_ = PathParams{};
-    if (route_ && !params_.Match(route_->base_path, route_->path, options)) {
-      detail::Panic("RequestBuilder: Uri-Path does not match MatchRoute()");
+    if (route_pattern_ && !params_.Match("", *route_pattern_, options)) {
+      detail::Panic("RequestBuilder: Uri-Path does not match route pattern");
     }
     RequestContext ctx = ctx_;
     ctx.responder = &recorder_;
@@ -139,11 +143,6 @@ class RequestBuilder {
   }
 
  private:
-  struct RoutePattern {
-    std::string base_path;
-    std::string path;
-  };
-
   // Round-trips the options through the real serializer/deserializer so the
   // handler sees a genuine wire-format OptionsView.
   OptionsView EncodeOptions() {
@@ -172,7 +171,7 @@ class RequestBuilder {
   Code method_;
   std::vector<CapturedOption> options_{};
   std::vector<std::byte> payload_{};
-  std::optional<RoutePattern> route_{};
+  std::optional<std::string> route_pattern_{};
   RequestContext ctx_{};
   RecordingResponder recorder_{};
 
