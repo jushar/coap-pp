@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string_view>
+#include <utility>
 
 #include "coap_pp/content_formats.hpp"
 #include "coap_pp/log.hpp"
@@ -42,9 +43,17 @@ std::size_t JoinUriPath(const OptionsView& opts, char* buf,
   return len;
 }
 
+// Installed as the not-found handler unless the user provides one: replies
+// with an empty 4.04.
+HandlerResult DefaultNotFoundHandler(const RawRequest&, WireSender& sender) {
+  sender(WireResponse{codes::kNotFound, {}});
+  return HandlerResult::kSync;
+}
+
 }  // namespace
 
-CoapServer::CoapServer(Messenger& messenger) : messenger_{messenger} {
+CoapServer::CoapServer(Messenger& messenger)
+    : messenger_{messenger}, not_found_handler_{DefaultNotFoundHandler} {
   messenger_.SetHandler(*this);
 }
 
@@ -76,6 +85,11 @@ void CoapServer::AddRouter(RouterBase& router) {
     }
   }
   routers_.PushFront(router);
+}
+
+void CoapServer::SetNotFoundHandler(RequestHandler handler) {
+  not_found_handler_ =
+      handler ? std::move(handler) : RequestHandler{DefaultNotFoundHandler};
 }
 
 void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
@@ -121,25 +135,32 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
     if (found_route != nullptr) break;
   }
 
-  if (found_route == nullptr) {
-    const Code error =
-        path_matched ? codes::kMethodNotAllowed : codes::kNotFound;
-    detail::Log<LogLevel::kInfo>(
-        "%s: %.*s", path_matched ? "405 Method Not Allowed" : "404 Not Found",
-        static_cast<int>(path_len), path_buf);
+  if (found_route == nullptr && path_matched) {
+    detail::Log<LogLevel::kInfo>("405 Method Not Allowed: %.*s",
+                                 static_cast<int>(path_len), path_buf);
     SendResponse(sender, msg.type, msg.message_id, msg.token, true,
-                 WireResponse{error, {}});
+                 WireResponse{codes::kMethodNotAllowed, {}});
     return;
   }
+
+  // No path matched: dispatch to the not-found handler. The last Match()
+  // attempt failed and cleared params, so it sees empty path parameters.
+  const bool not_found = (found_route == nullptr);
+  if (not_found) {
+    detail::Log<LogLevel::kInfo>("404 Not Found: %.*s",
+                                 static_cast<int>(path_len), path_buf);
+  }
+  const RequestHandler& handler =
+      not_found ? not_found_handler_ : found_route->handler;
 
   // §4.5 duplicate detection: a retransmitted non-idempotent request must not
   // re-execute the handler. A duplicate CON gets an empty ACK so the client
   // stops retransmitting (the real response — piggybacked or deferred — was
   // already sent for the original); a duplicate NON is silently ignored.
   // Idempotent methods skip the cache entirely and are simply re-executed.
-  // Error paths above (4.04/4.05) are also re-executed so their piggybacked
-  // ACK is re-sent.
-  if (!IsIdempotent(msg.code)) {
+  // Error paths (4.05 above and the not-found handler) are also re-executed
+  // so their piggybacked ACK is re-sent.
+  if (!not_found && !IsIdempotent(msg.code)) {
     if (IsDuplicate(sender, msg.message_id)) {
       detail::Log<LogLevel::kDebug>("%.*s: dropping duplicate MID %u",
                                     static_cast<int>(path_len), path_buf,
@@ -163,7 +184,7 @@ void CoapServer::OnMessage(const Endpoint& sender, const Message& msg) {
   WireSender wire_sender{[this, &sender, &msg](const WireResponse& r) {
     this->SendResponse(sender, msg.type, msg.message_id, msg.token, true, r);
   }};
-  const HandlerResult result = found_route->handler(req, wire_sender);
+  const HandlerResult result = handler(req, wire_sender);
 
   if (result == HandlerResult::kAsync) {
     detail::Log<LogLevel::kDebug>(

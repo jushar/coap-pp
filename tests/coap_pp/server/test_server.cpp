@@ -22,6 +22,36 @@
 namespace coap_pp {
 namespace {
 
+// Minimal serde for typed handlers: uint32_t as 4 big-endian bytes.
+struct U32Serializer final {
+  static constexpr ContentFormat kContentFormat = ContentFormat::kOctetStream;
+
+  template <typename T>
+  static SerializeError Serialize(const T& val, span<std::byte> buf,
+                                  std::size_t& written) {
+    if (buf.size() < 4) return SerializeError::kBufferTooSmall;
+    for (std::size_t i = 0; i < 4; ++i) {
+      buf[i] = static_cast<std::byte>(val >> (8u * (3u - i)));
+    }
+    written = 4;
+    return SerializeError::kOk;
+  }
+};
+
+struct U32Deserializer final {
+  template <typename T>
+  static std::optional<T> Deserialize(span<const std::byte> payload) {
+    if (payload.size() != 4) return std::nullopt;
+    T val = 0;
+    for (const std::byte b : payload) {
+      val = (val << 8u) | static_cast<uint8_t>(b);
+    }
+    return val;
+  }
+};
+
+using U32Router = Router<U32Serializer, U32Deserializer>;
+
 // ── Fixture
 // ───────────────────────────────────────────────────────────────────
 
@@ -131,6 +161,68 @@ TEST_F(ServerTest, Dispatch_WrongMethod_Returns405_WithoutCallingHandler) {
   ASSERT_EQ(transport_.sends_.size(), 1u);
   const auto resp = transport_.DeserializeFirstResponse();
   EXPECT_EQ(resp.code, codes::kMethodNotAllowed);
+}
+
+// ── Not-found handler
+// ────────────────────────────────────────────────────────────
+
+TEST_F(ServerTest, NotFoundHandler_Typed_DeserializesAndSerializes) {
+  constexpr std::array<std::byte, 4> kRequest{std::byte{0}, std::byte{0},
+                                              std::byte{0}, std::byte{41}};
+  server_.SetNotFoundHandler(
+      U32Router::Bind([](const Request<uint32_t>& req) -> Response<uint32_t> {
+        return {codes::kNotFound, req.Body() + 1u};
+      }));
+
+  InjectRequest(MessageType::kNon, codes::kPost, 0x0001u, "/nope", kRequest);
+
+  ASSERT_EQ(transport_.sends_.size(), 1u);
+  const auto resp = transport_.DeserializeFirstResponse();
+  EXPECT_EQ(resp.code, codes::kNotFound);
+  ASSERT_EQ(resp.payload.size(), 4u);
+  EXPECT_EQ(resp.payload[3], std::byte{42});
+}
+
+TEST_F(ServerTest, NotFoundHandler_NotCalledOnMethodMismatch) {
+  bool called = false;
+  const std::array<Route, 1> routes{
+      {{codes::kGet, "/known", [](const RawRequest&, WireSender& s) {
+          s(WireResponse{codes::kContent});
+          return HandlerResult::kSync;
+        }}}};
+  RouterBase router{"", routes};
+  server_.AddRouter(router);
+  server_.SetNotFoundHandler([&](const RawRequest&, WireSender& s) {
+    called = true;
+    s(WireResponse{codes::kNotFound});
+    return HandlerResult::kSync;
+  });
+
+  InjectRequest(MessageType::kNon, codes::kPost, 0x0001u, "/known");
+
+  EXPECT_FALSE(called);
+  EXPECT_EQ(transport_.DeserializeFirstResponse().code,
+            codes::kMethodNotAllowed);
+}
+
+TEST_F(ServerTest, NotFoundHandler_EmptyHandler_RestoresDefault404) {
+  server_.SetNotFoundHandler([](const RawRequest&, WireSender& s) {
+    s(WireResponse{codes::kContent});
+    return HandlerResult::kSync;
+  });
+  server_.SetNotFoundHandler({});
+
+  InjectRequest(MessageType::kNon, codes::kGet, 0x0001u, "/nope");
+
+  EXPECT_EQ(transport_.DeserializeFirstResponse().code, codes::kNotFound);
+}
+
+TEST_F(ServerTest, NotFound_Duplicate_CON_POST_ResendsReply) {
+  InjectRequest(MessageType::kCon, codes::kPost, 0x0042u, "/nope");
+  InjectRequest(MessageType::kCon, codes::kPost, 0x0042u, "/nope");
+
+  ASSERT_EQ(transport_.sends_.size(), 2u);
+  EXPECT_EQ(transport_.DeserializeResponseAt(1).code, codes::kNotFound);
 }
 
 TEST_F(ServerTest, Dispatch_EmptyCON_AnsweredWithRstNotRouted) {
